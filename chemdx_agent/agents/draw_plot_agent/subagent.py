@@ -4,6 +4,7 @@ from chemdx_agent.schema import AgentState, Result
 
 system_prompt = "You are the general agent of materials. we have function to change name to refcode "
 
+
 general_agent = Agent(
     model = "openai:gpt-4o",
     output_type = Result,
@@ -12,13 +13,24 @@ general_agent = Agent(
         "temperature": 0.0,
         "parallel_tool_calls": False,
     },
-    system_propmpt = system_prompt,
+    system_prompt = system_prompt,
 )
 
 
 # Tool setting
 @general_agent.tool_plain
 def name_to_refcode(name: str) -> str:
+    """Change name to refcode
+    args:
+        name: (str) The name of the material to change to refcode
+    output:
+        (str) The refcode of the materials
+    """
+    return "FEJWOE"
+
+
+@general_agent.tool_plain
+def name_to_smiles(name: str) -> str:
     """Change name to refcode
     args:
         name: (str) The name of the material to change to refcode
