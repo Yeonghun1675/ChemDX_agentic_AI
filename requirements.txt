@@ -1,0 +1,7 @@
+pydantic
+pydantic_ai
+pydantic-evals[logfire]
+dotenv
+tiktoken
+pandas
+requests
