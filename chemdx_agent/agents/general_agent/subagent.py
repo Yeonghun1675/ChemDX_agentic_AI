@@ -12,7 +12,7 @@ general_agent = Agent(
         "temperature": 0.0,
         "parallel_tool_calls": False,
     },
-    system_propmpt = system_prompt,
+    system_prompt = system_prompt,
 )
 
 
