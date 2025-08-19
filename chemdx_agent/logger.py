@@ -7,7 +7,7 @@ def get_logger(name, stream=True, file=False):
 
     if stream:
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
+        handler.setFormatter(logging.Formatter('%(message)s'))
         logger.addHandler(handler)
 
     if file:
