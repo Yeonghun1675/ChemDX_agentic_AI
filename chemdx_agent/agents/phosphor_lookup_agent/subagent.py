@@ -154,8 +154,8 @@ def lookup_by_formula(formula: str, file_path: Optional[str] = None) -> str:
     
     if row := _get_row(_df_cache, formula):
         columns = list(_df_cache.columns)
-        emission_col = _find_col(columns, ["emission", "em_max", "emission_max", "lambda_em"])
-        decay_col = _find_col(columns, ["decay", "lifetime", "tau"])
+        emission_col = _find_col(columns, ["emission", "em_max", "emission_max", "lambda_em", "emission max. (nm)"])
+        decay_col = _find_col(columns, ["decay", "lifetime", "tau", "decay time (ns)"])
         
         emission = _get_numeric(row, emission_col) if emission_col else None
         decay = _get_numeric(row, decay_col) if decay_col else None
@@ -261,18 +261,18 @@ def formula_to_hex_color(formula: str, file_path: Optional[str] = None) -> str:
     columns = list(_df_cache.columns)
     
     # Try xyY first, then XYZ
-    x_col = _find_col(columns, ["x", "cie_x", "chromaticity x"])
-    y_col = _find_col(columns, ["y", "cie_y", "chromaticity y"]) 
-    Y_col = _find_col(columns, ["Y", "cie_y", "luminance", "intensity"])
+    x_col = _find_col(columns, ["CIE x coordinate", "x", "cie_x", "chromaticity x", "cie x"])
+    y_col = _find_col(columns, ["CIE y coordinate", "y", "cie_y", "chromaticity y", "cie y"]) 
+    Y_col = _find_col(columns, ["Y", "cie_y", "luminance", "intensity"]) 
     
-    if all(col for col in [x_col, y_col, Y_col]):
+    if x_col and y_col:
         x_val = _get_numeric(row, x_col)
         y_val = _get_numeric(row, y_col)
-        Y_val = _get_numeric(row, Y_col)
-        if all(v is not None for v in [x_val, y_val, Y_val]):
+        Y_val = _get_numeric(row, Y_col) if Y_col else 1.0
+        if x_val is not None and y_val is not None and Y_val is not None:
             hex_str = xyY_to_hex(x_val, y_val, Y_val)
             if not hex_str.startswith("Error"):
-                return f"Formula: {formula}; Color: {hex_str}; Source: xyY({x_val}, {y_val}, {Y_val})"
+                return f"Formula: {formula}; Color: {hex_str}; Source: xyY(x={x_val}, y={y_val}, Y={Y_val})"
     
     # Fallback to XYZ
     X_col = _find_col(columns, ["X", "cie_x", "tristimulus x"])
@@ -431,7 +431,6 @@ async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent:
         - "Find 5 most similar formulas to 'YAG:Ce' with their emission and decay data"
         - "Convert formula 'SrAl2O4:Eu2+' to hex color using CIE values from the database"
     """
-    print ('hello')
     agent_name = "PhosphorLookupAgent"
     deps = ctx.deps
 
@@ -439,9 +438,6 @@ async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent:
     result = await phosphor_agent.run(message2agent, deps=deps)
     output = result.output
     
-    deps.add_working_memory(agent_name, message2agent)
-    deps.increment_step()
-
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     
