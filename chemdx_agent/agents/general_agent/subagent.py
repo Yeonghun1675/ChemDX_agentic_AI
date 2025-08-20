@@ -4,6 +4,7 @@ from chemdx_agent.schema import AgentState, Result
 
 system_prompt = "You are the general agent of materials. we have function to change name to refcode"
 
+
 general_agent = Agent(
     model = "openai:gpt-4o",
     output_type = Result,
