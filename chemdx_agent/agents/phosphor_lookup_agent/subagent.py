@@ -252,13 +252,33 @@ def formula_to_hex_color(formula: str, file_path: Optional[str] = None) -> str:
 
 
 async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent: str):
-    """Call phosphor lookup agent"""
+    f"""Call phosphor lookup agent to execute the task: {role}
+
+    args:
+        message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do. 
+        
+        The phosphor lookup agent can:
+        - load_phosphor_db: Load CSV/Excel database from path or auto-resolve from env var PHOSPHOR_DB_PATH
+        - lookup_by_formula: Find exact formula match and return emission max and decay time
+        - similar_formulas: Find top-k most similar formulas with similarity scores and emission/decay data
+        - formula_to_hex_color: Convert formula to hex color using CIE xyY/XYZ values from database
+        
+        Example messages:
+        - "Load the phosphor database from './data/Inorganic_Phosphor.csv'"
+        - "Find emission and decay for formula 'SrAl2O4:Eu2+'"
+        - "Find 5 most similar formulas to 'YAG:Ce' with their emission and decay data"
+        - "Convert formula 'SrAl2O4:Eu2+' to hex color using CIE values from the database"
+    """
+
+    agent_name = "PhosphorLookupAgent"
     deps = ctx.deps
-    logger.info(f"[{name}] Message2Agent: {message2agent}")
+
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await phosphor_agent.run(message2agent, deps=deps)
     output = result.output
-    logger.info(f"[{name}] Action: {output.action}")
-    logger.info(f"[{name}] Result: {output.result}")
+    
+    logger.info(f"[{agent_name}] Action: {output.action}")
+    logger.info(f"[{agent_name}] Result: {output.result}")
+    
     return output
-
-
+    
