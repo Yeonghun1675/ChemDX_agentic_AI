@@ -15,6 +15,9 @@ Your Currunt Role: {role}
 Important Context: {context}
 """
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
 
 sample_agent = Agent(
     model = "openai:gpt-4o",
@@ -26,6 +29,15 @@ sample_agent = Agent(
     },
     system_prompt = system_prompt,
 )
+
+@sample_agent.system_prompt(dynamic=True)
+def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
+    deps = ctx.deps
+    return working_memory_prompt.format(
+        main_goal = deps.main_task,
+        working_memory = deps.working_memory_description,
+    )
+
 
 # Tool setting
 @sample_agent.tool_plain
@@ -51,10 +63,16 @@ async def call_sample_agent(ctx: RunContext[AgentState], message2agent: str):
     deps = ctx.deps
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+
+    user_prompt = "Current Task of your role: {message2agent}"
+
     result = await sample_agent.run(
-        message2agent, deps=deps
+        user_prompt, deps=deps
     )
+
     output = result.output
+    deps.add_working_memory(agent_name, message2agent)
+    deps.increment_step()
 
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
