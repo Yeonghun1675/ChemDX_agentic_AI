@@ -427,7 +427,7 @@ async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent:
         - "Find 5 most similar formulas to 'YAG:Ce' with their emission and decay data"
         - "Convert formula 'SrAl2O4:Eu2+' to hex color using CIE values from the database"
     """
-
+    print ('hello')
     agent_name = "PhosphorLookupAgent"
     deps = ctx.deps
 
