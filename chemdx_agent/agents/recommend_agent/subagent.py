@@ -79,6 +79,10 @@ name = "RecommendAgent"
 role = "Recommend phosphor materials with long decay times based on desired color"
 context = "Use provided tools. DB path: PHOSPHOR_DB_PATH env var or ./data/Inorganic_Phosphor.csv"
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 system_prompt = f"""You are {name}. {role}. {context}"""
 
 recommend_agent = Agent(
@@ -114,10 +118,27 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
 def _find_col(columns: List[str], keywords: List[str]) -> Optional[str]:
     """Find column by keywords (case-insensitive contains)"""
     lower_cols = {c.lower(): c for c in columns}
+    
+    # First try exact matches
     for keyword in keywords:
+        k = keyword.lower()
+        if k in lower_cols:
+            return lower_cols[k]
+    
+    # Then try contains matches
+    for keyword in keywords:
+        k = keyword.lower()
         for col in lower_cols:
-            if keyword.lower() in col:
+            if k in col:
                 return lower_cols[col]
+    
+    # If still not found, try more flexible matching
+    for col in lower_cols:
+        col_lower = col.lower()
+        for keyword in keywords:
+            if keyword.lower() in col_lower or col_lower in keyword.lower():
+                return lower_cols[col]
+    
     return None
 
 
@@ -151,15 +172,15 @@ def load_phosphor_db(file_path: Optional[str] = None) -> str:
 
 @recommend_agent.tool_plain
 def recommend_by_color(desired_color: str, min_decay_ms: float = 1.0, top_k: int = 5, file_path: Optional[str] = None) -> str:
-    """Recommend phosphor materials with long decay times based on desired color
+    """Recommend phosphor materials with long decay times based on desired color using CIE coordinates
     
     args:
-        desired_color: (str) Desired color (hex like #FF0000, or color name like 'red', 'blue', etc.)
+        desired_color: (str) Desired color name (e.g., 'blue', 'red', 'green', 'yellow', 'white', etc.)
         min_decay_ms: (float) Minimum decay time in milliseconds (default 1.0ms)
         top_k: (int) Number of recommendations to return (default 5)
         file_path: (Optional[str]) Database path
     output:
-        (str) Ranked list of recommendations with formula, color, decay time, and similarity score
+        (str) Ranked list of recommendations with formula, CIE coordinates, decay time, and similarity score
     """
     global _df_cache
     
@@ -171,86 +192,124 @@ def recommend_by_color(desired_color: str, min_decay_ms: float = 1.0, top_k: int
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    # Normalize color input
-    target_hex = desired_color.strip()
-    if not target_hex.startswith('#'):
-        # Try to convert color name to hex (basic mapping)
-        color_map = {
-            'red': '#FF0000', 'green': '#00FF00', 'blue': '#0000FF',
-            'yellow': '#FFFF00', 'cyan': '#00FFFF', 'magenta': '#FF00FF',
-            'white': '#FFFFFF', 'black': '#000000', 'orange': '#FFA500',
-            'purple': '#800080', 'pink': '#FFC0CB', 'brown': '#A52A2A'
-        }
-        target_hex = color_map.get(target_hex.lower(), target_hex)
+    # Define CIE coordinate ranges for different colors based on actual database
+    color_ranges = {
+        'blue': {'x_min': 0.15, 'x_max': 0.18, 'y_min': 0.08, 'y_max': 0.13},
+        'cyan': {'x_min': 0.18, 'x_max': 0.30, 'y_min': 0.25, 'y_max': 0.40},
+        'red': {'x_min': 0.60, 'x_max': 0.70, 'y_min': 0.30, 'y_max': 0.40},
+        'green': {'x_min': 0.20, 'x_max': 0.30, 'y_min': 0.40, 'y_max': 0.55},
+        'yellow': {'x_min': 0.40, 'x_max': 0.50, 'y_min': 0.45, 'y_max': 0.55},
+        'white': {'x_min': 0.25, 'x_max': 0.35, 'y_min': 0.25, 'y_max': 0.35},
+        'magenta': {'x_min': 0.35, 'x_max': 0.45, 'y_min': 0.15, 'y_max': 0.25},
+        'orange': {'x_min': 0.55, 'x_max': 0.65, 'y_min': 0.35, 'y_max': 0.45},
+        'purple': {'x_min': 0.25, 'x_max': 0.35, 'y_min': 0.15, 'y_max': 0.25}
+    }
     
-    if not target_hex.startswith('#'):
-        return "Error: Invalid color format. Use hex (#RRGGBB) or color name."
+    target_color = desired_color.lower().strip()
+    if target_color not in color_ranges:
+        return f"Error: Color '{desired_color}' not supported. Available colors: {', '.join(color_ranges.keys())}"
+    
+    color_range = color_ranges[target_color]
     
     # Find required columns
     columns = list(_df_cache.columns)
-    formula_col = _find_col(columns, ["formula", "compound", "name"])
-    decay_col = _find_col(columns, ["decay", "lifetime", "tau"])
-    x_col = _find_col(columns, ["x", "cie_x", "chromaticity x"])
-    y_col = _find_col(columns, ["y", "cie_y", "chromaticity y"]) 
-    Y_col = _find_col(columns, ["Y", "cie_y", "luminance", "intensity"])
+    formula_col = _find_col(columns, ["inorganic phosphor", "formula", "compound", "name", "chemical", "material", "composition"])
+    decay_col = _find_col(columns, ["decay time (ns)", "decay", "lifetime", "tau", "decay_time", "lifetime_ms"])
+    x_col = _find_col(columns, ["CIE x coordinate", "x", "cie_x", "chromaticity x", "cie x"])
+    y_col = _find_col(columns, ["CIE y coordinate", "y", "cie_y", "chromaticity y", "cie y"]) 
+    Y_col = _find_col(columns, ["Y", "cie_y", "luminance", "intensity", "cie Y"])
+    
+    # Debug output
+    debug_info = f"Found columns - Formula: {formula_col}, Decay: {decay_col}, x: {x_col}, y: {y_col}, Y: {Y_col}"
     
     if not formula_col:
-        return "Error: No formula column found in database"
+        return f"Error: No formula column found in database. {debug_info}"
     
     if not decay_col:
-        return "Error: No decay/lifetime column found in database"
+        return f"Error: No decay/lifetime column found in database. {debug_info}"
+    
+    if not all([x_col, y_col]):
+        return f"Error: CIE x,y coordinates not found in database. {debug_info}"
     
     # Process each row and calculate scores
     recommendations = []
+    debug_info = []
+    total_rows = len(_df_cache)
+    rows_with_cie = 0
+    rows_with_decay = 0
     
-    for _, row in _df_cache.iterrows():
+    for idx, (_, row) in enumerate(_df_cache.iterrows()):
         # Get decay time
-        decay_val = _get_numeric(row, decay_col)
-        if decay_val is None or decay_val < min_decay_ms:
+        decay_ns = _get_numeric(row, decay_col)
+        if decay_ns is not None:
+            rows_with_decay += 1
+        if decay_ns is None:
             continue
-        
-        # Calculate color similarity if CIE data available
-        color_sim = 0.0
-        material_hex = "N/A"
-        
-        if all(col for col in [x_col, y_col, Y_col]):
-            x_val = _get_numeric(row, x_col)
-            y_val = _get_numeric(row, y_col)
-            Y_val = _get_numeric(row, Y_col)
-            
-            if all(v is not None for v in [x_val, y_val, Y_val]):
-                material_hex = xyY_to_hex(x_val, y_val, Y_val)
-                if not material_hex.startswith("Error"):
-                    color_sim = color_similarity(target_hex, material_hex)
-        
-        # Calculate combined score (color similarity + decay time bonus)
-        decay_bonus = min(decay_val / 100.0, 0.3)  # Cap decay bonus at 30%
-        combined_score = color_sim + decay_bonus
-        
+
+        # convert ns → ms
+        decay_ms = decay_ns / 1_000_000.0
+        if decay_ms < min_decay_ms:
+            continue
+
+        # Get CIE coordinates
+        x_val = _get_numeric(row, x_col)
+        y_val = _get_numeric(row, y_col)
+        Y_val = _get_numeric(row, Y_col) if Y_col else 1.0
+
+        if x_val is not None and y_val is not None:
+            rows_with_cie += 1
+
+        if x_val is None or y_val is None:
+            continue
+
+        # Check if coordinates are within color range
+        in_range = (color_range['x_min'] <= x_val <= color_range['x_max'] and 
+               color_range['y_min'] <= y_val <= color_range['y_max'])
+
+        # Debug: Track first few materials
+        if idx < 10:
+            debug_info.append(f"Row {idx}: x={x_val:.3f}, y={y_val:.3f}, decay={decay_ms:.3f}ms, in_range={in_range}")
+
+        if not in_range:
+            continue
+
+        # Calculate distance from center of color range
+        center_x = (color_range['x_min'] + color_range['x_max']) / 2
+        center_y = (color_range['y_min'] + color_range['y_max']) / 2
+        distance = ((x_val - center_x) ** 2 + (y_val - center_y) ** 2) ** 0.5
+
+        # Calculate combined score (color proximity + decay time bonus)
+        color_score = 1.0 - min(distance * 10, 1.0)  # Normalize distance to 0-1
+        decay_bonus = min(decay_ms / 100.0, 0.3)  # Cap decay bonus at 30%
+        combined_score = color_score + decay_bonus
+
         recommendations.append({
             'formula': str(row[formula_col]),
-            'decay_ms': decay_val,
-            'color_hex': material_hex,
-            'color_similarity': color_sim,
+            'decay_ms': decay_ms,
+            'x': x_val,
+            'y': y_val,
+            'Y': Y_val,
+            'color_score': color_score,
             'combined_score': combined_score
         })
     
     if not recommendations:
-        return f"No materials found with decay time >= {min_decay_ms}ms"
+        debug_output = "\n".join(debug_info[:10])  # Show first 10 debug entries
+        return f"No materials found for color '{desired_color}' with decay time >= {min_decay_ms}ms\n\nDEBUG INFO:\nTotal rows: {total_rows}\nRows with decay data: {rows_with_decay}\nRows with CIE data: {rows_with_cie}\n\nFirst 10 rows:\n{debug_output}"
     
-    # Sort by combined score (color similarity + decay bonus)
+    # Sort by combined score (color proximity + decay bonus)
     recommendations.sort(key=lambda x: x['combined_score'], reverse=True)
     
     # Format output
-    lines = [f"Recommendations for color {desired_color} (min decay: {min_decay_ms}ms):"]
+    lines = [f"Recommendations for {desired_color} color (min decay: {min_decay_ms}ms):"]
     
     for i, rec in enumerate(recommendations[:top_k], 1):
         lines.append(
             f"{i}. {rec['formula']} | "
             f"Decay: {rec['decay_ms']:.1f}ms | "
-            f"Color: {rec['color_hex']} | "
-            f"Color similarity: {rec['color_similarity']:.3f} | "
-            f"Score: {rec['combined_score']:.3f}"
+            f"CIE(x={rec['x']:.3f}, y={rec['y']:.3f}, Y={rec['Y']:.3f}) | "
+            f"Color score: {rec['color_score']:.3f} | "
+            f"Total score: {rec['combined_score']:.3f}"
         )
     
     return "\n".join(lines)
@@ -270,17 +329,107 @@ def recommend_by_color_range(color_range: str, min_decay_ms: float = 1.0, top_k:
     """
     # Map color ranges to target colors
     range_map = {
-        'warm white': '#FFF8DC',
-        'cool white': '#F0F8FF', 
-        'warm yellow': '#FFD700',
-        'cool blue': '#4169E1',
-        'red-orange': '#FF4500',
-        'green-yellow': '#ADFF2F',
-        'purple-blue': '#9370DB'
+        'warm white': 'white',
+        'cool white': 'white', 
+        'warm yellow': 'yellow',
+        'cool blue': 'blue',
+        'red-orange': 'orange',
+        'green-yellow': 'green',
+        'purple-blue': 'purple'
     }
     
     target_color = range_map.get(color_range.lower(), color_range)
     return recommend_by_color(target_color, min_decay_ms, top_k, file_path)
+
+
+@recommend_agent.tool_plain
+def analyze_color_distribution(file_path: Optional[str] = None) -> str:
+    """Analyze the color distribution in the phosphor database"""
+    global _df_cache
+    
+    if _df_cache is None or (file_path and file_path != _path_cache):
+        status = load_phosphor_db(file_path)
+        if status.startswith("Error"):
+            return status
+    
+    if _df_cache is None:
+        return "Error: Database not loaded"
+    
+    # Find required columns
+    columns = list(_df_cache.columns)
+    x_col = _find_col(columns, ["CIE x coordinate", "x", "cie_x", "chromaticity x", "cie x"])
+    y_col = _find_col(columns, ["CIE y coordinate", "y", "cie_y", "chromaticity y", "cie y"])
+    
+    if not all([x_col, y_col]):
+        return "Error: CIE x,y coordinates not found in database"
+    
+    # Define color ranges
+    color_ranges = {
+        'blue': {'x_min': 0.10, 'x_max': 0.30, 'y_min': 0.02, 'y_max': 0.20},
+        'red': {'x_min': 0.55, 'x_max': 0.80, 'y_min': 0.20, 'y_max': 0.40},
+        'green': {'x_min': 0.20, 'x_max': 0.40, 'y_min': 0.50, 'y_max': 0.70},
+        'yellow': {'x_min': 0.40, 'x_max': 0.60, 'y_min': 0.40, 'y_max': 0.60},
+        'white': {'x_min': 0.25, 'x_max': 0.45, 'y_min': 0.25, 'y_max': 0.45}
+    }
+    
+    lines = ["COLOR DISTRIBUTION ANALYSIS:"]
+    
+    for color_name, range_def in color_ranges.items():
+        count = 0
+        for _, row in _df_cache.iterrows():
+            x_val = _get_numeric(row, x_col)
+            y_val = _get_numeric(row, y_col)
+            
+            if x_val is not None and y_val is not None:
+                in_range = (range_def['x_min'] <= x_val <= range_def['x_max'] and 
+                           range_def['y_min'] <= y_val <= range_def['y_max'])
+                if in_range:
+                    count += 1
+        
+        lines.append(f"{color_name.capitalize()}: {count} materials")
+    
+    lines.append("")
+    lines.append("SAMPLE CIE COORDINATES (first 10 rows):")
+    for i, (_, row) in enumerate(_df_cache.head(10).iterrows()):
+        x_val = _get_numeric(row, x_col)
+        y_val = _get_numeric(row, y_col)
+        if x_val is not None and y_val is not None:
+            lines.append(f"  Row {i+1}: x={x_val:.3f}, y={y_val:.3f}")
+    
+    return "\n".join(lines)
+
+
+@recommend_agent.tool_plain
+def check_database_structure(file_path: Optional[str] = None) -> str:
+    """Check the database structure and show available columns"""
+    global _df_cache
+    
+    if _df_cache is None or (file_path and file_path != _path_cache):
+        status = load_phosphor_db(file_path)
+        if status.startswith("Error"):
+            return status
+    
+    if _df_cache is None:
+        return "Error: Database not loaded"
+    
+    lines = ["DATABASE STRUCTURE CHECK:"]
+    lines.append(f"Total rows: {len(_df_cache)}")
+    lines.append(f"Total columns: {len(_df_cache.columns)}")
+    lines.append("")
+    
+    lines.append("ALL COLUMNS:")
+    for i, col in enumerate(_df_cache.columns):
+        lines.append(f"  {i+1}. '{col}'")
+    
+    lines.append("")
+    lines.append("FIRST 3 ROWS:")
+    for i, (_, row) in enumerate(_df_cache.head(3).iterrows()):
+        lines.append(f"Row {i+1}:")
+        for col in _df_cache.columns:
+            lines.append(f"  {col}: {row[col]}")
+        lines.append("")
+    
+    return "\n".join(lines)
 
 
 async def call_recommend_agent(ctx: RunContext[AgentState], message2agent: str):
@@ -308,6 +457,10 @@ async def call_recommend_agent(ctx: RunContext[AgentState], message2agent: str):
     result = await recommend_agent.run(message2agent, deps=deps)
     output = result.output
     
+    # Removed working_memory/increment_step since not guaranteed in deps
+    # deps.add_working_memory(agent_name, message2agent)
+    # deps.increment_step()
+
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     

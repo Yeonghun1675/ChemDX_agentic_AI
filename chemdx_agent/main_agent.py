@@ -20,14 +20,14 @@ main_agent = Agent(
         "temperature": 0.0,
         "parallel_tool_calls": False,
     },
-    system_propmpt = system_prompt,
+    system_prompt = system_prompt,
     tools = tools
 )
 
 # connect main agent with subagent
-main_agent.tool(call_sample_agent)
-#main_agent.tool(call_phosphor_lookup_agent)
-
+#main_agent.tool(call_sample_agent)
+main_agent.tool(call_phosphor_lookup_agent)
+main_agent.tool(call_recommend_agent)
 
 async def run_main_agent(message: str, deps: Optional[AgentState] = None):
     if deps is None:

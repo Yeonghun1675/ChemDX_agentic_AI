@@ -51,6 +51,10 @@ name = "PhosphorLookupAgent"
 role = "Look up phosphor data (emission, decay, color) from Inorganic_Phosphor CSV DB"
 context = "Use provided tools. DB path: PHOSPHOR_DB_PATH env var or ./data/Inorganic_Phosphor.csv"
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 system_prompt = f"""You are {name}. {role}. {context}"""
 
 phosphor_agent = Agent(
@@ -95,7 +99,7 @@ def _find_col(columns: List[str], keywords: List[str]) -> Optional[str]:
 
 def _get_row(df: pd.DataFrame, formula: str) -> Optional[pd.Series]:
     """Get row by formula (case-insensitive exact match)"""
-    formula_col = _find_col(list(df.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(df.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if not formula_col:
         return None
     
@@ -208,7 +212,7 @@ def similar_formulas(formula: str, top_k: int = 5, file_path: Optional[str] = No
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if not formula_col:
         return "Error: No formula column found"
     
@@ -299,7 +303,7 @@ def debug_formula_search(formula: str, file_path: Optional[str] = None) -> str:
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if not formula_col:
         return "Error: No formula column found"
     
@@ -396,7 +400,7 @@ def debug_database_info(file_path: Optional[str] = None) -> str:
         lines.append("")
     
     # Check for formula column specifically
-    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if formula_col:
         lines.append(f"FORMULA COLUMN FOUND: '{formula_col}'")
         lines.append("FIRST 10 FORMULAS:")
@@ -435,6 +439,9 @@ async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent:
     result = await phosphor_agent.run(message2agent, deps=deps)
     output = result.output
     
+    deps.add_working_memory(agent_name, message2agent)
+    deps.increment_step()
+
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     
