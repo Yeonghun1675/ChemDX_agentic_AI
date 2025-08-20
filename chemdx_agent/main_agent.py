@@ -28,7 +28,7 @@ main_agent = Agent(
 #main_agent.tool(call_sample_agent)
 main_agent.tool(call_phosphor_lookup_agent)
 main_agent.tool(call_recommend_agent)
-main_agent.tool(call_mp_structure_agent)
+main_agent.tool(call_color_trend_agent)
 
 
 async def run_main_agent(message: str):

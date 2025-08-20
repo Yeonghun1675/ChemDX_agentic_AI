@@ -5,3 +5,5 @@ dotenv
 tiktoken
 pandas
 requests
+mp-api
+pymatgen

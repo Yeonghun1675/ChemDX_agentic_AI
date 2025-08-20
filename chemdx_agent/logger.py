@@ -4,16 +4,21 @@ import logging
 def get_logger(name, stream=True, file=False):
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
+    logger.propagate = False
 
     if stream:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter('%(message)s'))
-        logger.addHandler(handler)
+        has_stream = any(isinstance(h, logging.StreamHandler) for h in logger.handlers)
+        if not has_stream:
+            handler = logging.StreamHandler()
+            handler.setFormatter(logging.Formatter('%(message)s'))
+            logger.addHandler(handler)
 
     if file:
-        handler = logging.FileHandler(f"{name}.log")
-        handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
-        logger.addHandler(handler)
+        has_file = any(isinstance(h, logging.FileHandler) for h in logger.handlers)
+        if not has_file:
+            handler = logging.FileHandler(f"{name}.log")
+            handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
+            logger.addHandler(handler)
 
     return logger
 
