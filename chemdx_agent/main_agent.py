@@ -25,7 +25,6 @@ main_agent = Agent(
 
 # connect main agent with subagent
 main_agent.tool(call_sample_agent)
-main_agent.tool(call_cie_to_color_agent)
 main_agent.tool(call_phosphor_lookup_agent)
 
 
