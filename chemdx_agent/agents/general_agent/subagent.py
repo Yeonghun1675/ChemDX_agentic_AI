@@ -1,5 +1,6 @@
 from pydantic_ai import Agent, RunContext
 from chemdx_agent.schema import AgentState, Result
+from chemdx_agent.logger import logger
 
 
 system_prompt = "You are the general agent of materials. we have function to change name to refcode"
@@ -32,7 +33,11 @@ async def call_general_agent(ctx: RunContext[AgentState], message2agent: str):
     args:
         message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
     """
+    agent_name = "GeneralAgent"
     deps = ctx.deps
-    return await general_agent.run(
-        message2agent, deps=deps
-    )
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+    result = await general_agent.run(message2agent, deps=deps)
+    output = result.output
+    logger.info(f"[{agent_name}] Action: {output.action}")
+    logger.info(f"[{agent_name}] Result: {output.result}")
+    return output

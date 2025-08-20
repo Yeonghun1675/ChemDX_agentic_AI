@@ -75,6 +75,15 @@ def xyz_to_hex(X: float, Y: float, Z: float) -> str:
     return f"#{r_255:02X}{g_255:02X}{b_255:02X}"
 
 
+def _fmt_float(value: Optional[float], digits: int = 3) -> str:
+    try:
+        if value is None or pd.isna(value):
+            return "N/A"
+        return f"{float(value):.{digits}f}"
+    except Exception:
+        return "N/A"
+
+
 name = "RecommendAgent"
 role = "Recommend phosphor materials with long decay times based on desired color"
 context = "Use provided tools. DB path: PHOSPHOR_DB_PATH env var or ./data/Inorganic_Phosphor.csv"
@@ -115,6 +124,34 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
     return next((c for c in candidates if c and os.path.exists(c)), None)
 
 
+def _split_paths(text: str) -> List[str]:
+    for sep in [";", ",", ":"]:
+        text = text.replace(sep, "|")
+    return [p.strip() for p in text.split("|") if p.strip()]
+
+
+def _resolve_paths(file_path: Optional[str]) -> List[str]:
+    candidates = []
+    if file_path:
+        candidates.extend(_split_paths(file_path))
+    if env_path := os.getenv("PHOSPHOR_DB_PATH"):
+        candidates.extend(_split_paths(env_path))
+    candidates.extend([
+        "Inorganic_Phosphor_Optical_Properties_DB.csv",
+        "data/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
+        "data/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",
+        "data/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls",
+        "estm.csv", "MatDX_EF.csv",
+    ])
+    seen = set()
+    uniq: List[str] = []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return [c for c in uniq if os.path.exists(c)]
+
+
 def _find_col(columns: List[str], keywords: List[str]) -> Optional[str]:
     """Find column by keywords (case-insensitive contains)"""
     lower_cols = {c.lower(): c for c in columns}
@@ -152,22 +189,26 @@ def _get_numeric(row: pd.Series, col: str) -> Optional[float]:
 
 @recommend_agent.tool_plain
 def load_phosphor_db(file_path: Optional[str] = None) -> str:
-    """Load Inorganic_Phosphor CSV database into memory"""
+    """Load and combine CSV/Excel databases into memory for recommendation tasks."""
     global _df_cache, _path_cache
-    
-    resolved = _resolve_path(file_path)
-    if not resolved:
-        return "Error: Could not resolve DB path. Set PHOSPHOR_DB_PATH or place at ./data/Inorganic_Phosphor.csv"
-    
-    try:
-        if resolved.endswith('.csv'):
-            _df_cache = pd.read_csv(resolved)
-        else:
-            _df_cache = pd.read_excel(resolved)
-        _path_cache = resolved
-        return f"Loaded {len(_df_cache)} rows from '{resolved}'"
-    except Exception as exc:
-        return f"Error loading '{resolved}': {exc}"
+    paths = _resolve_paths(file_path)
+    if not paths:
+        return "Error: Could not resolve any DB file"
+    frames: List[pd.DataFrame] = []
+    names: List[str] = []
+    for p in paths:
+        try:
+            df = pd.read_csv(p) if p.lower().endswith('.csv') else pd.read_excel(p)
+            df["source"] = os.path.basename(p)
+            frames.append(df)
+            names.append(os.path.basename(p))
+        except Exception:
+            continue
+    if not frames:
+        return "Error: Resolved files exist but none could be loaded"
+    _df_cache = pd.concat(frames, axis=0, ignore_index=True, sort=False)
+    _path_cache = ";".join(paths)
+    return f"Loaded {len(_df_cache)} rows from {len(frames)} sources ({', '.join(names)})"
 
 
 @recommend_agent.tool_plain
@@ -306,10 +347,10 @@ def recommend_by_color(desired_color: str, min_decay_ms: float = 1.0, top_k: int
     for i, rec in enumerate(recommendations[:top_k], 1):
         lines.append(
             f"{i}. {rec['formula']} | "
-            f"Decay: {rec['decay_ms']:.1f}ms | "
-            f"CIE(x={rec['x']:.3f}, y={rec['y']:.3f}, Y={rec['Y']:.3f}) | "
-            f"Color score: {rec['color_score']:.3f} | "
-            f"Total score: {rec['combined_score']:.3f}"
+            f"Decay: {_fmt_float(rec['decay_ms'], 1)}ms | "
+            f"CIE(x={_fmt_float(rec['x'])}, y={_fmt_float(rec['y'])}, Y={_fmt_float(rec['Y'])}) | "
+            f"Color score: {_fmt_float(rec['color_score'])} | "
+            f"Total score: {_fmt_float(rec['combined_score'])}"
         )
     
     return "\n".join(lines)

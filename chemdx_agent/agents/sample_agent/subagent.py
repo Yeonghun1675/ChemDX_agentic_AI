@@ -64,7 +64,7 @@ async def call_sample_agent(ctx: RunContext[AgentState], message2agent: str):
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
 
-    user_prompt = "Current Task of your role: {message2agent}"
+    user_prompt = f"Current Task of your role: {message2agent}"
 
     result = await sample_agent.run(
         user_prompt, deps=deps

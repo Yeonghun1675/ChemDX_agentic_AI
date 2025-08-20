@@ -62,6 +62,39 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
     return next((c for c in candidates if c and os.path.exists(c)), None)
 
 
+def _split_paths(text: str) -> List[str]:
+    for sep in [";", ",", ":"]:
+        text = text.replace(sep, "|")
+    return [p.strip() for p in text.split("|") if p.strip()]
+
+
+def _resolve_paths(file_path: Optional[str]) -> List[str]:
+    candidates: List[str] = []
+    if file_path:
+        candidates.extend(_split_paths(file_path))
+    env_path = os.getenv("PHOSPHOR_DB_PATH")
+    if env_path:
+        candidates.extend(_split_paths(env_path))
+    candidates.extend([
+        "Inorganic_Phosphor_Optical_Properties_DB.csv",
+        "data/Inorganic_Phosphor.csv",
+        "Inorganic_Phosphor.csv",
+        "data/Inorganic_Phosphor.xlsx",
+        "Inorganic_Phosphor.xlsx",
+        "data/Inorganic_Phosphor.xls",
+        "Inorganic_Phosphor.xls",
+        "estm.csv",
+        "MatDX_EF.csv",
+    ])
+    seen = set()
+    uniq: List[str] = []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return [c for c in uniq if os.path.exists(c)]
+
+
 def _find_col(columns: List[str], keywords: List[str]) -> Optional[str]:
     lower_map = {c.lower(): c for c in columns}
     for kw in keywords:
@@ -171,29 +204,29 @@ def _hex_to_color_name(hex_str: str) -> Optional[str]:
 # -----------------------
 @color_trend_agent.tool_plain
 def load_phosphor_db(file_path: Optional[str] = None) -> str:
-    """Load the phosphor database (CSV/Excel). Auto-resolves path if not provided.
+    """Load and combine CSV/Excel databases within this agent.
 
-    args:
-        file_path: Optional explicit path.
-    output:
-        Status string describing rows loaded or error.
+    Supports multi-path input via file_path/PHOSPHOR_DB_PATH; falls back to optical DB + estm + MatDX_EF.
     """
     global _df_cache, _path_cache
-    resolved = _resolve_path(file_path)
-    if not resolved:
-        return (
-            "Error: Could not resolve DB path. Set PHOSPHOR_DB_PATH or place the file at "
-            "./Inorganic_Phosphor_Optical_Properties_DB.csv or ./data/Inorganic_Phosphor.csv"
-        )
-    try:
-        if resolved.endswith(".csv"):
-            _df_cache = pd.read_csv(resolved)
-        else:
-            _df_cache = pd.read_excel(resolved)
-        _path_cache = resolved
-        return f"Loaded {len(_df_cache)} rows from '{resolved}'"
-    except Exception as exc:
-        return f"Error loading '{resolved}': {exc}"
+    paths = _resolve_paths(file_path)
+    if not paths:
+        return "Error: Could not resolve any DB file"
+    frames: List[pd.DataFrame] = []
+    names: List[str] = []
+    for p in paths:
+        try:
+            df = pd.read_csv(p) if p.lower().endswith(".csv") else pd.read_excel(p)
+            df["source"] = os.path.basename(p)
+            frames.append(df)
+            names.append(os.path.basename(p))
+        except Exception:
+            continue
+    if not frames:
+        return "Error: Resolved files exist but none could be loaded"
+    _df_cache = pd.concat(frames, axis=0, ignore_index=True, sort=False)
+    _path_cache = ";".join(paths)
+    return f"Loaded {len(_df_cache)} rows from {len(frames)} sources ({', '.join(names)})"
 
 
 @color_trend_agent.tool_plain
