@@ -356,15 +356,18 @@ def trend_by_ratio(host: str, dopant: str, file_path: Optional[str] = None) -> s
 # Agent caller
 # -----------------------
 async def call_color_trend_agent(ctx: RunContext[AgentState], message2agent: str):
-    f"""Call color trend agent to analyze color change vs dopant ratio.
+    f"""[Scope] Use ONLY for host+dopant specific color/emission change vs dopant ratio.
 
     The agent can:
     - load_phosphor_db(file_path?): Load the DB
-    - trend_by_ratio(host, dopant, file_path?): Summarize color/emission vs ratio
+    - trend_by_ratio(host, dopant, file_path?): Summarize color/emission vs ratio for a given host and activator
 
     Example messages:
     - "For host 'Ba2V3O11' doped with 'Eu', how does color change with ratio?"
     - "I'm going to dope element Tb on Sr8ZnScP7O28; show color change by ratio."
+
+    Do NOT use this agent for generic cross-dataset feature–feature trends (e.g.,
+    "emission max vs color across the DB"). For generic X–Y trends, use TrendAgent instead.
     """
     agent_name = name
     deps = ctx.deps
