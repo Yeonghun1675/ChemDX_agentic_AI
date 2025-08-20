@@ -75,6 +75,7 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
     if env_path := os.getenv("PHOSPHOR_DB_PATH"):
         candidates.append(env_path)
     candidates.extend([
+        "Inorganic_Phosphor_Optical_Properties_DB.csv",  # Use actual database file
         "data/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
         "data/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",  # fallback for Excel
         "data/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls"
@@ -157,7 +158,41 @@ def lookup_by_formula(formula: str, file_path: Optional[str] = None) -> str:
         
         return f"Formula: {formula}; Emission: {emission or 'N/A'}; Decay: {decay or 'N/A'}"
     
-    return f"Not found: '{formula}'"
+    # If exact match not found, find similar formulas
+    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    if not formula_col:
+        return f"Not found: '{formula}' and no formula column available"
+    
+    # Get unique formulas and calculate similarities
+    formulas = _df_cache[formula_col].astype(str).dropna().unique()
+    target = str(formula).strip().lower()
+    
+    scored = [(f, difflib.SequenceMatcher(None, target, str(f).lower()).ratio()) 
+              for f in formulas if str(f).strip()]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    
+    if not scored:
+        return f"Not found: '{formula}'"
+    
+    # Get top 3 similar formulas
+    top_similar = scored[:3]
+    columns = list(_df_cache.columns)
+    emission_col = _find_col(columns, ["emission", "em_max", "emission_max", "lambda_em"])
+    decay_col = _find_col(columns, ["decay", "lifetime", "tau"])
+    
+    lines = [f"Exact match not found for '{formula}'. Here are similar formulas:"]
+    
+    for cand, score in top_similar:
+        if score > 0.3:  # Only show if similarity > 30%
+            row = _df_cache[_df_cache[formula_col] == cand].iloc[0]
+            emission = _get_numeric(row, emission_col) if emission_col else None
+            decay = _get_numeric(row, decay_col) if decay_col else None
+            lines.append(f"- {cand} (similarity: {score:.2f}) | Emission: {emission or 'N/A'}; Decay: {decay or 'N/A'}")
+    
+    if len(lines) == 1:  # Only header line
+        return f"Not found: '{formula}' (no similar formulas found)"
+    
+    return "\n".join(lines)
 
 
 @phosphor_agent.tool_plain
@@ -249,6 +284,129 @@ def formula_to_hex_color(formula: str, file_path: Optional[str] = None) -> str:
                 return f"Formula: {formula}; Color: {hex_str}; Source: XYZ({X_val}, {Y_val}, {Z_val})"
     
     return "No CIE data found for formula"
+
+
+@phosphor_agent.tool_plain
+def debug_formula_search(formula: str, file_path: Optional[str] = None) -> str:
+    """Debug function to check what formulas are in the database and find matches"""
+    global _df_cache
+    
+    if _df_cache is None or (file_path and file_path != _path_cache):
+        status = load_phosphor_db(file_path)
+        if status.startswith("Error"):
+            return status
+    
+    if _df_cache is None:
+        return "Error: Database not loaded"
+    
+    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    if not formula_col:
+        return "Error: No formula column found"
+    
+    # Show all formulas in database
+    all_formulas = _df_cache[formula_col].astype(str).dropna().unique()
+    
+    target = str(formula).strip().lower()
+    
+    # Try different matching strategies
+    exact_matches = []
+    contains_matches = []
+    similar_matches = []
+    
+    for f in all_formulas:
+        f_str = str(f).strip()
+        f_lower = f_str.lower()
+        
+        # Exact match (case-insensitive)
+        if f_lower == target:
+            exact_matches.append(f_str)
+        
+        # Contains match
+        if target in f_lower or f_lower in target:
+            contains_matches.append(f_str)
+        
+        # Similarity match
+        similarity = difflib.SequenceMatcher(None, target, f_lower).ratio()
+        if similarity > 0.7:
+            similar_matches.append((f_str, similarity))
+    
+    # Sort similar matches by similarity
+    similar_matches.sort(key=lambda x: x[1], reverse=True)
+    
+    lines = [f"Debug search for: '{formula}'"]
+    lines.append(f"Total formulas in DB: {len(all_formulas)}")
+    lines.append("")
+    
+    if exact_matches:
+        lines.append("EXACT MATCHES:")
+        for match in exact_matches:
+            lines.append(f"  ✓ {match}")
+    else:
+        lines.append("NO EXACT MATCHES")
+    
+    if contains_matches:
+        lines.append("")
+        lines.append("CONTAINS MATCHES:")
+        for match in contains_matches:
+            lines.append(f"  ~ {match}")
+    
+    if similar_matches:
+        lines.append("")
+        lines.append("SIMILAR MATCHES (similarity > 0.7):")
+        for match, sim in similar_matches[:5]:
+            lines.append(f"  ≈ {match} (similarity: {sim:.3f})")
+    
+    # Show first 10 formulas in DB for reference
+    lines.append("")
+    lines.append("FIRST 10 FORMULAS IN DATABASE:")
+    for i, f in enumerate(all_formulas[:10]):
+        lines.append(f"  {i+1}. {f}")
+    
+    return "\n".join(lines)
+
+
+@phosphor_agent.tool_plain
+def debug_database_info(file_path: Optional[str] = None) -> str:
+    """Debug function to check database structure and content"""
+    global _df_cache
+    
+    if _df_cache is None or (file_path and file_path != _path_cache):
+        status = load_phosphor_db(file_path)
+        if status.startswith("Error"):
+            return status
+    
+    if _df_cache is None:
+        return "Error: Database not loaded"
+    
+    lines = ["DATABASE DEBUG INFO:"]
+    lines.append(f"Total rows: {len(_df_cache)}")
+    lines.append(f"Total columns: {len(_df_cache.columns)}")
+    lines.append("")
+    
+    lines.append("COLUMNS:")
+    for i, col in enumerate(_df_cache.columns):
+        lines.append(f"  {i+1}. {col}")
+    
+    lines.append("")
+    lines.append("FIRST 5 ROWS:")
+    for i, (_, row) in enumerate(_df_cache.head().iterrows()):
+        lines.append(f"Row {i+1}:")
+        for col in _df_cache.columns:
+            lines.append(f"  {col}: {row[col]}")
+        lines.append("")
+    
+    # Check for formula column specifically
+    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    if formula_col:
+        lines.append(f"FORMULA COLUMN FOUND: '{formula_col}'")
+        lines.append("FIRST 10 FORMULAS:")
+        formulas = _df_cache[formula_col].astype(str).dropna().unique()
+        for i, f in enumerate(formulas[:10]):
+            lines.append(f"  {i+1}. {f}")
+    else:
+        lines.append("NO FORMULA COLUMN FOUND!")
+    
+    return "\n".join(lines)
 
 
 async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent: str):
