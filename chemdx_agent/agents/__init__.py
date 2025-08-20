@@ -1,1 +1,2 @@
 from .sample_agent.subagent import call_sample_agent
+from .phosphor_lookup_agent.subagent import call_phosphor_lookup_agent
