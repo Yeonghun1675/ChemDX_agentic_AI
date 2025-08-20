@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Any
+import threading
 
 
 class ResultTool(BaseModel):
@@ -19,10 +20,24 @@ class AgentInput(BaseModel):
 
 
 class AgentState(BaseModel):
-    main_task: str = Field(description="Clear description of the main task")
-    working_memory: str = Field(description="Working memory of the agent", default="")
-    current_step: int = 0
-    results: List[ResultTool] = Field(description="List of results", default=[])
+    main_task: str = Field(description="Clear description of the main task", default="")
+    working_memory: List[str] = Field(description="Working memory of the agent", default=[])
+    current_step: int = Field(description="Current step of the agent", default=0)
+    lock: Any = Field(default_factory=threading.Lock, exclude=True)
+
+    def add_working_memory(self, agent_name: str, memory: str):
+        with self.lock:
+            self.working_memory.append(f"[{agent_name}] {memory}")
+
+    def increment_step(self) -> int:
+        """Thread-safe하게 current_step을 1씩 증가시키고 증가된 값을 반환합니다."""
+        with self.lock:
+            self.current_step += 1
+            return self.current_step
+
+    @property
+    def working_memory_description(self) -> str:
+        return "\n".join(self.working_memory)
 
 
 class FinalAnswer(BaseModel):
