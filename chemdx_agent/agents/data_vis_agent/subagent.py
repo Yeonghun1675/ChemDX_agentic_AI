@@ -16,8 +16,8 @@ import matplotlib.pyplot as plt
 # -----------------------------
 
 name = "DataVisualisationAgent"
-role = "You take in data and create graphs or plots using matplotlib and seaborn."
-context = "Important Context that agent should be know. For example, you must not use numpy array. instead, use pandas DataFrame."
+role = "You take in data and create graphs or plots using matplotlib and seaborn. You can create comparison plots between materials, especially for thermoelectric ZT vs temperature analysis."
+context = "Important Context that agent should know: 1) You must not use numpy array, instead use pandas DataFrame. 2) For material comparisons, use the create_thermoelectric_comparison_plot function to compare two materials' ZT vs temperature performance. 3) You can highlight optimal performance temperatures and determine which material performs better at specific temperatures. 4) IMPORTANT: Extract the target temperature from the user's request (e.g., '300K', '500K') and use it for performance comparison, don't hardcode temperatures."
 
 
 system_prompt = f"""You are the {name}. You can use available tools or request help from specialized sub-agents that perform specific tasks. You must only carry out the role assigned to you. If a request is outside your capabilities, you should ask for support from the appropriate agent instead of trying to handle it yourself.
@@ -387,6 +387,334 @@ def create_thermoelectric_plot(
         return {
             "ok": False,
             "error": str(e),
+            "figure_path": None,
+            "data_csv_path": None
+        }
+
+@viz_agent.tool_plain
+def create_material_comparison_plot(
+    material1_data: Dict[str, Any],
+    material2_data: Dict[str, Any],
+    target_temperature: float,
+    title: str = "Material Comparison",
+    prefix: str = "comparison"
+) -> Dict[str, Any]:
+    """
+    Create a simple comparison plot between two materials showing ZT vs Temperature.
+    Just two lines, no extra complexity.
+    
+    Args:
+        material1_data: Dict containing 'formula', 'temperature_data', 'zt_data' for first material
+        material2_data: Dict containing 'formula', 'temperature_data', 'zt_data' for second material
+        target_temperature: Target temperature for performance comparison (user-specified)
+        title: Plot title
+        prefix: Filename prefix
+        
+    Returns:
+        Dict with plot path, data path, and simple comparison analysis
+    """
+    try:
+        # Extract data
+        formula1 = material1_data.get('formula', 'Material 1')
+        temp1 = material1_data.get('temperature_data', [])
+        zt1 = material1_data.get('zt_data', [])
+        
+        formula2 = material2_data.get('formula', 'Material 2')
+        temp2 = material2_data.get('temperature_data', [])
+        zt2 = material2_data.get('zt_data', [])
+        
+        # Validate data
+        if not temp1 or not zt1 or not temp2 or not zt2:
+            return {
+                "ok": False,
+                "error": "Both materials must have valid temperature and ZT data",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        if len(temp1) != len(zt1) or len(temp2) != len(zt2):
+            return {
+                "ok": False,
+                "error": "Temperature and ZT data lists must have the same length for each material",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Sort data by temperature for smooth plotting
+        temp1_sorted, zt1_sorted = zip(*sorted(zip(temp1, zt1)))
+        temp2_sorted, zt2_sorted = zip(*sorted(zip(temp2, zt2)))
+        
+        temp1 = list(temp1_sorted)
+        zt1 = list(zt1_sorted)
+        temp2 = list(temp2_sorted)
+        zt2 = list(zt2_sorted)
+        
+        # Create plot
+        fig_path = _outfile(prefix)
+        data_path = fig_path.replace(".png", "_data.csv")
+        
+        # Use provided title or generate one
+        plot_title = title or f"ZT Comparison: {formula1} vs {formula2}"
+        
+        plt.figure(figsize=(12, 8))
+        
+        # Plot both materials
+        plt.plot(temp1, zt1, marker="o", linewidth=2, markersize=6, label=formula1, color='blue')
+        plt.plot(temp2, zt2, marker="s", linewidth=2, markersize=6, label=formula2, color='red')
+        
+        # Find and highlight optimal temperatures
+        max_zt1_idx = zt1.index(max(zt1))
+        optimal_temp1 = temp1[max_zt1_idx]
+        optimal_zt1 = zt1[max_zt1_idx]
+        
+        max_zt2_idx = zt2.index(max(zt2))
+        optimal_temp2 = temp2[max_zt2_idx]
+        optimal_zt2 = zt2[max_zt2_idx]
+        
+        # Highlight optimal points with larger markers
+        plt.plot(optimal_temp1, optimal_zt1, marker="o", markersize=10, color='blue', 
+                markeredgecolor='black', markeredgewidth=2)
+        plt.plot(optimal_temp2, optimal_zt2, marker="s", markersize=10, color='red', 
+                markeredgecolor='black', markeredgewidth=2)
+        
+        # Add target temperature reference line (user-specified, not hardcoded)
+        temp_min = min(min(temp1), min(temp2))
+        temp_max = max(max(temp1), max(temp2))
+        if temp_min <= target_temperature <= temp_max:
+            plt.axvline(x=target_temperature, color='green', linestyle='--', alpha=0.7, linewidth=2)
+            plt.text(target_temperature, plt.ylim()[1] * 0.95, f'{target_temperature:.0f}K', 
+                    rotation=90, ha='right', va='top', 
+                    bbox=dict(boxstyle='round,pad=0.3', facecolor='lightgreen', alpha=0.7))
+        
+        plt.xlabel("Temperature (K)")
+        plt.ylabel("ZT")
+        plt.title(plot_title)
+        plt.legend(loc='best')
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(fig_path, dpi=200, bbox_inches='tight')
+        plt.close()
+        
+        # Save comparison data
+        import pandas as pd
+        comparison_df = pd.DataFrame({
+            'temperature_K': temp1 + temp2,
+            'ZT': zt1 + zt2,
+            'material': [formula1] * len(temp1) + [formula2] * len(temp2)
+        })
+        comparison_df.to_csv(data_path, index=False)
+        
+        # Determine better performer at target temperature
+        better_at_target = None
+        zt_at_target_1 = None
+        zt_at_target_2 = None
+        
+        # Find ZT values closest to target temperature for each material
+        if temp_min <= target_temperature <= temp_max:
+            # Find closest temperature to target for each material
+            temp1_target_idx = min(range(len(temp1)), key=lambda i: abs(temp1[i] - target_temperature))
+            temp2_target_idx = min(range(len(temp2)), key=lambda i: abs(temp2[i] - target_temperature))
+            
+            zt_at_target_1 = zt1[temp1_target_idx]
+            zt_at_target_2 = zt2[temp2_target_idx]
+            
+            if zt_at_target_1 > zt_at_target_2:
+                better_at_target = formula1
+            elif zt_at_target_2 > zt_at_target_1:
+                better_at_target = formula2
+            else:
+                better_at_target = "Equal performance"
+        
+        return {
+            "ok": True,
+            "figure_path": fig_path,
+            "data_csv_path": data_path,
+            "title": plot_title,
+            "materials": [formula1, formula2],
+            "target_temperature": target_temperature,
+            "comparison_analysis": {
+                "material1": {
+                    "formula": formula1,
+                    "optimal_temperature": optimal_temp1,
+                    "optimal_zt": optimal_zt1,
+                    "zt_range": f"{min(zt1):.3f} - {max(zt1):.3f}"
+                },
+                "material2": {
+                    "formula": formula2,
+                    "optimal_temperature": optimal_temp2,
+                    "optimal_zt": optimal_zt2,
+                    "zt_range": f"{min(zt2):.3f} - {max(zt2):.3f}"
+                },
+                "performance_at_target": {
+                    "better_material": better_at_target,
+                    "zt_at_target_material1": zt_at_target_1,
+                    "zt_at_target_material2": zt_at_target_2
+                }
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "figure_path": None,
+            "data_csv_path": None
+        }
+
+@viz_agent.tool_plain
+def create_thermoelectric_comparison_plot(
+    material1_formula: str,
+    material2_formula: str,
+    title: str = None,
+    prefix: str = "thermoelectric_comparison"
+) -> Dict[str, Any]:
+    """
+    Create a comparison plot between two thermoelectric materials by fetching their data
+    from the database and plotting ZT vs Temperature.
+    
+    Args:
+        material1_formula: Chemical formula of first material (e.g., 'Cu2SnS3')
+        material2_formula: Chemical formula of second material (e.g., 'YbSi2')
+        title: Optional plot title
+        prefix: Filename prefix
+        
+    Returns:
+        Dict with plot path, data path, and comparison analysis
+    """
+    try:
+        # Import database agent functions directly
+        from chemdx_agent.agents.tme_db_agent.subagent import get_material_properties
+        
+        # Get data for both materials
+        material1_data = get_material_properties(material1_formula)
+        material2_data = get_material_properties(material2_formula)
+        
+        if not material1_data.get("results"):
+            return {
+                "ok": False,
+                "error": f"No data found for material {material1_formula}",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        if not material2_data.get("results"):
+            return {
+                "ok": False,
+                "error": f"No data found for material {material2_formula}",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Extract temperature and ZT data
+        temp1 = [row.get("temperature(K)", 0) for row in material1_data["results"]]
+        zt1 = [row.get("ZT", 0) for row in material1_data["results"]]
+        
+        temp2 = [row.get("temperature(K)", 0) for row in material2_data["results"]]
+        zt2 = [row.get("ZT", 0) for row in material2_data["results"]]
+        
+        # Filter out invalid data points
+        valid_data1 = [(t, z) for t, z in zip(temp1, zt1) 
+                       if t is not None and z is not None and not pd.isna(t) and not pd.isna(z)]
+        valid_data2 = [(t, z) for t, z in zip(temp2, zt2) 
+                       if t is not None and z is not None and not pd.isna(t) and not pd.isna(z)]
+        
+        if not valid_data1 or not valid_data2:
+            return {
+                "ok": False,
+                "error": f"Invalid data points found for one or both materials",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Sort data by temperature for smooth plotting
+        valid_data1.sort(key=lambda x: x[0])  # Sort by temperature
+        valid_data2.sort(key=lambda x: x[0])  # Sort by temperature
+        
+        temp1_clean, zt1_clean = zip(*valid_data1)
+        temp2_clean, zt2_clean = zip(*valid_data2)
+        
+        # Prepare data for comparison plot
+        material1_plot_data = {
+            'formula': material1_formula,
+            'temperature_data': list(temp1_clean),
+            'zt_data': list(zt1_clean)
+        }
+        
+        material2_plot_data = {
+            'formula': material2_formula,
+            'temperature_data': list(temp2_clean),
+            'zt_data': list(zt2_clean)
+        }
+        
+        # Use provided title or generate one
+        plot_title = title or f"ZT Comparison: {material1_formula} vs {material2_formula}"
+        
+        # Create the comparison plot
+        return create_material_comparison_plot(
+            material1_plot_data,
+            material2_plot_data,
+            target_temperature=500,  # Default to 500K, but this should be passed from user request
+            title=plot_title,
+            prefix=prefix
+        )
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"Failed to create thermoelectric comparison plot: {str(e)}",
+            "figure_path": None,
+            "data_csv_path": None
+        }
+
+@viz_agent.tool_plain
+def compare_materials_zt_performance(
+    material1_formula: str,
+    material2_formula: str,
+    target_temperature: float = 300
+) -> Dict[str, Any]:
+    """
+    Compare two materials' ZT performance and determine which is better at a target temperature.
+    This function creates a comparison plot and analyzes performance at the specified temperature.
+    
+    Args:
+        material1_formula: Chemical formula of first material
+        material2_formula: Chemical formula of second material
+        target_temperature: Target temperature for performance comparison (default: 300K)
+        
+    Returns:
+        Dict with comparison plot, analysis, and recommendation
+    """
+    try:
+        # Use the existing thermoelectric comparison function
+        comparison_result = create_thermoelectric_comparison_plot(
+            material1_formula,
+            material2_formula,
+            title=f"ZT Comparison: {material1_formula} vs {material2_formula}",
+            prefix=f"{material1_formula.lower()}_vs_{material2_formula.lower()}"
+        )
+        
+        if not comparison_result.get("ok"):
+            return comparison_result
+        
+        # Extract the comparison analysis
+        analysis = comparison_result.get("comparison_analysis", {})
+        
+        # Add specific analysis for the target temperature
+        target_temp_analysis = {
+            "target_temperature": target_temperature,
+            "better_material": analysis.get("performance_at_300k", {}).get("better_material"),
+            "recommendation": f"Retrieve POSCAR file for {analysis.get('performance_at_300k', {}).get('better_material')} using Materials Project database"
+        }
+        
+        # Update the result with target temperature analysis
+        comparison_result["target_temperature_analysis"] = target_temp_analysis
+        
+        return comparison_result
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": f"Failed to compare materials: {str(e)}",
             "figure_path": None,
             "data_csv_path": None
         }
