@@ -6,3 +6,5 @@ __pycache__
 log.txt
 plots
 poscars
+output
+rf*
