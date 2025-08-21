@@ -11,4 +11,6 @@ mp-api
 pymatgen
 seaborn 
 streamlit
-
+pymatgen
+scikit-learn
+matminer

@@ -1,12 +1,10 @@
-
-from pydantic_graph import BaseNode
-from dataclasses import dataclass
+from pathlib import Path
+import os
 
 from pydantic_ai import Agent
-from pydantic_ai.usage import UsageLimits
 from typing import Optional
 
-from chemdx_agent.schema import AgentState, AgentInput, FinalAnswer
+from chemdx_agent.schema import AgentState, FinalAnswer
 from chemdx_agent.logger import logger
 from chemdx_agent.utils import make_tool_message
 from chemdx_agent.agents import *
@@ -39,13 +37,24 @@ main_agent.tool(call_MatDX_agent)
 main_agent.tool(call_ML_agent)
 
 
-async def run_main_agent(message: str, deps=Optional[AgentState]):
+async def run_main_agent(message: str, deps: Optional[AgentState] = None):
     if deps is None:
         deps = AgentState()
 
+    # Clear log file contents only (keep the file)
+    try:
+        with open("log.txt", "r+") as f:
+            f.truncate(0)  # Clear file contents 
+    except FileNotFoundError:
+        # Create new file if it doesn't exist
+        with open("log.txt", "w") as f:
+            f.write("")
+    except Exception as e:
+        logger.error(f"Failed to clear log file: {e}")
+
     deps.main_task = message
 
-    logger.info(f"[Question] {message}")
+    logger.info(f"[Question] {message}ㅤ")
     result = await main_agent.run(
         message,
         deps=deps,
@@ -56,6 +65,6 @@ async def run_main_agent(message: str, deps=Optional[AgentState]):
     for log in list_tool_log:
         logger.info(log)
 
-    logger.info(f"[Final Answer] {output.final_answer}")
-    logger.info(f"[Evaluation] {output.evaluation}")
+    logger.info(f"[Final Answer] {output.final_answer}ㅤ")
+    logger.info(f"[Evaluation] {output.evaluation}ㅤ")
     return output

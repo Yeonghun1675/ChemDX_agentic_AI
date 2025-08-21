@@ -5,7 +5,6 @@ import json
 import asyncio
 from pathlib import Path
 
-from chemdx_agent.schema import AgentState
 from chemdx_agent.main_agent import run_main_agent
 from chemdx_agent.utils import split_line_to_agent_and_message
 
@@ -98,51 +97,6 @@ def _display_line(line, displayed_lines):
         displayed_lines.add(line)
         return True
 
-def generate_mermaid_flowchart(agent_sequence):
-    """
-    Generate mermaid flowchart code from agent sequence
-    
-    Args:
-        agent_sequence: List of agent names like ['MainAgent', 'SampleAgent', ...]
-    
-    Returns:
-        str: Mermaid flowchart code
-    """
-    if not agent_sequence:
-        return ""
-    
-    # Remove consecutive duplicates
-    cleaned_sequence = []
-    for i, agent in enumerate(agent_sequence):
-        if i == 0 or agent != agent_sequence[i-1]:
-            cleaned_sequence.append(agent)
-    
-    # Add start and end
-    if cleaned_sequence:
-        cleaned_sequence = ['start'] + cleaned_sequence + ['end']
-    
-    # Generate mermaid code
-    mermaid_code = "```mermaid\nflowchart TD\n"
-    
-    # Add nodes
-    for i, agent in enumerate(cleaned_sequence):
-        if agent == 'start':
-            mermaid_code += f"    {agent}[Start]\n"
-        elif agent == 'end':
-            mermaid_code += f"    {agent}[End]\n"
-        else:
-            mermaid_code += f"    {agent}[{agent}]\n"
-    
-    # Add connections
-    for i in range(len(cleaned_sequence) - 1):
-        current = cleaned_sequence[i]
-        next_agent = cleaned_sequence[i + 1]
-        mermaid_code += f"    {current} --> {next_agent}\n"
-    
-    mermaid_code += "```"
-    
-    return mermaid_code
-
 def extract_agent_sequence_from_log():
     """Extract agent sequence from log.txt file"""
     agent_sequence = []
@@ -165,15 +119,6 @@ def extract_agent_sequence_from_log():
     
     return agent_sequence
 
-def display_agent_flowchart(agent_sequence):
-    """Display mermaid flowchart in Streamlit with expandable section"""
-    mermaid_code = generate_mermaid_flowchart(agent_sequence)
-    if mermaid_code:
-        with st.expander("📊 Agent Flow Chart", expanded=False):
-            st.markdown("### Agent Execution Flow")
-            st.code(mermaid_code, language="mermaid")
-            st.markdown(mermaid_code)
-
 async def monitor_log_file(log_file_path, placeholder):
     """Monitor log.txt file in real-time and stream to Streamlit (asyncio-based)"""
     if not os.path.exists(log_file_path):
@@ -182,6 +127,7 @@ async def monitor_log_file(log_file_path, placeholder):
     last_position = 0
     accumulated_lines = []
     displayed_lines = set()  # Track already displayed lines
+    temp_buffer = ""  # Temporary buffer for incomplete lines
     
     while True:
         try:
@@ -193,13 +139,40 @@ async def monitor_log_file(log_file_path, placeholder):
                     await asyncio.sleep(0.1)
                     continue
                 
-                # Add new lines
-                new_lines = new_content.split('\n')
-                for line in new_lines:
-                    if line.strip() and line not in accumulated_lines:
-                        accumulated_lines.append(line)
+                # Combine temp buffer with new content
+                content_to_process = temp_buffer + new_content
                 
-                # Display only new lines
+                # Split by lines and process
+                lines = content_to_process.split('\n')
+                
+                # Process all lines except the last one (which might be incomplete)
+                for line in lines[:-1]:
+                    if line.strip():
+                        # Check if line ends with end token (투명문자 ㅤ)
+                        if line.endswith('ㅤ'):
+                            # Complete line, add to accumulated_lines
+                            if line not in accumulated_lines:
+                                accumulated_lines.append(line)
+                        else:
+                            # Incomplete line, add to temp buffer
+                            temp_buffer = line
+                
+                # Handle the last line (might be incomplete)
+                last_line = lines[-1]
+                if last_line.strip():
+                    if last_line.endswith('ㅤ'):
+                        # Complete line, add to accumulated_lines
+                        if last_line not in accumulated_lines:
+                            accumulated_lines.append(last_line)
+                        temp_buffer = ""  # Clear temp buffer
+                    else:
+                        # Incomplete line, keep in temp buffer
+                        temp_buffer = last_line
+                else:
+                    # Empty line, clear temp buffer
+                    temp_buffer = ""
+                
+                # Display only new complete lines
                 for line in accumulated_lines:
                     _display_line(line, displayed_lines)
                 
@@ -212,8 +185,7 @@ async def monitor_log_file(log_file_path, placeholder):
 async def run_main_agent_with_logging(question):
     """Run main_agent (logging file handler already outputs to log.txt)"""
     # Run main_agent
-    state = AgentState()
-    result = await run_main_agent(question, state)
+    result = await run_main_agent(question)
     await asyncio.sleep(2)
     return result
 
@@ -288,14 +260,6 @@ def run_demo():
                 # Display using existing method if error occurs
                 st.text_area('', value=text, height=100,
                              max_chars=None, key=None)
-            
-            # Display agent flow chart at the end
-            st.markdown("---")
-            agent_sequence = extract_agent_sequence_from_log()
-            if agent_sequence:
-                display_agent_flowchart(agent_sequence)
-            else:
-                st.info("No agent execution log found.")
 
         else:
             st.warning('Please enter a question.')
