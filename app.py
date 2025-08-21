@@ -17,7 +17,7 @@ agent_color = {
     'PhosphorTrendAgent': '#D9F7D9',
     'PhosphorLookupAgent': '#FFE6CC',
     'RecommendAgent': '#E6D9FF',
-    'TrendAgent': '#CCF2FF',
+    'TrendAgent': '#FFA500',
     'DataVisualisationAgent': '#f3e4f5',
     'DFTPOSCARAgent': '#fff0f1',
     'MPAgent': '#c4c7e2',
