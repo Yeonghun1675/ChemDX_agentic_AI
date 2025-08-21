@@ -24,39 +24,37 @@ from pymatgen.symmetry.analyzer import SpacegroupAnalyzer
 from pymatgen.transformations.standard_transformations import SupercellTransformation
 
 
+name = "DFTPOSCARAgent"
+role = "Generate VASP POSCAR files by retrieving authoritative structures from Materials Project via the MaterialsProjectAgent."
+context = "You must NOT hallucinate structures. Always obtain a structure via the MaterialsProjectAgent.If multiple candidates are returned, prefer the one with the lowest energy_above_hull unless the user specifiesa space group, crystal system, or mp-id to use. You can convert structures to primitive or conventional cells. Always return structured results."
 
-NAME = "DFT_POSCAR_Agent"
-ROLE = "Generate VASP POSCAR files by retrieving authoritative structures from Materials Project via the MaterialsProjectAgent."
-CONTEXT = """You must NOT hallucinate structures. Always obtain a structure via the MaterialsProjectAgent.
-If multiple candidates are returned, prefer the one with the lowest energy_above_hull unless the user specifies
-a space group, crystal system, or mp-id to use. You can convert structures to primitive or conventional cells,
-and can optionally build a supercell before writing POSCAR. Always return structured results."""
 
-SYSTEM_PROMPT = f"""You are the {NAME}.
-You ONLY generate POSCAR files based on real structures fetched via the MaterialsProjectAgent.
-If a request cannot be satisfied (no structure found), return a clear error.
-If multiple structures match, apply user constraints; otherwise choose the lowest energy_above_hull.
+system_prompt = f"""You are the {name}. You can use available tools or request help from specialized sub-agents that perform specific tasks. You must only carry out the role assigned to you. If a request is outside your capabilities, you should ask for support from the appropriate agent instead of trying to handle it yourself.
+
+Your Currunt Role: {role}
+Important Context: {context}
 """
 
-WORKING_MEMORY_PROMPT = """Main Goal: {main_goal}
+working_memory_prompt = """Main Goal: {main_goal}
 Working Memory: {working_memory}
 """
 
-poscar_agent = Agent(
-    model="openai:gpt-4o",
-    output_type=Result,          
-    deps_type=AgentState,
-    model_settings={
+dft_poscar_agent = Agent(
+    model = "openai:gpt-4o",
+    output_type = Result,
+    deps_type = AgentState,
+    model_settings = {
         "temperature": 0.0,
         "parallel_tool_calls": False,
     },
-    system_prompt=SYSTEM_PROMPT,
+    system_prompt = system_prompt,
 )
 
-@poscar_agent.system_prompt(dynamic=True)
+
+@dft_poscar_agent.system_prompt(dynamic=True)
 def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
     deps = ctx.deps
-    return WORKING_MEMORY_PROMPT.format(
+    return working_memory_prompt.format(
         main_goal=deps.main_task,
         working_memory=deps.working_memory_description,
     )
@@ -111,7 +109,66 @@ def _write_poscar(structure: Structure, outfile: str) -> None:
 
 # -----------------------------
 
-@poscar_agent.tool_plain
+@dft_poscar_agent.tool
+async def generate_poscar_via_mp(
+    ctx: RunContext[AgentState],
+    material: str,
+    specification: Optional[Dict[str, Any]] = None,
+    payload_format: Literal["pmg_dict", "cif"] = "pmg_dict",
+    cell: Literal["primitive", "conventional"] = "conventional",
+    supercell: Optional[List[List[int]]] = None,
+    extra_meta: Optional[Dict[str, Any]] = None,
+) -> PoscarResult:
+    """
+    One-shot pipeline:
+      1) Call MaterialsProjectAgent to fetch the best structure for `material`.
+      2) Write a POSCAR using the returned payload.
+
+    Returns:
+      PoscarResult = { ok, path?, warnings?, error?, meta? }
+    """
+    # Import here to avoid circular imports at module import time
+    try:
+        from chemdx_agent.agents.mat_proj_lookup_agent.subagent import mp_lookup_agent
+    except Exception as e:
+        return PoscarResult(ok=False, error=f"Failed to import MaterialsProjectAgent: {e}")
+
+    # 1) Fetch structure from MP
+    mp_req = {
+        "material": material,
+        "specification": specification or {},
+        "payload_format": payload_format,
+    }
+    mp_res = await mp_lookup_agent.run(mp_req, deps=ctx.deps, usage=ctx.usage)
+    mp_out = mp_res.output if isinstance(mp_res.output, dict) else getattr(mp_res, "output", {})
+
+    if not isinstance(mp_out, dict) or not mp_out.get("ok"):
+        return PoscarResult(ok=False, error=f"MP lookup failed: {mp_out.get('error', 'unknown error')}")
+
+    structure_payload = mp_out.get("structure_payload")
+    pf = mp_out.get("payload_format", payload_format)
+    if structure_payload is None or pf not in ("pmg_dict", "cif"):
+        return PoscarResult(ok=False, error="Invalid MP payload: missing structure_payload or unsupported payload_format.")
+
+    # Merge meta for traceability
+    meta: Dict[str, Any] = {}
+    if isinstance(mp_out.get("meta"), dict):
+        meta.update(mp_out["meta"])
+    if isinstance(extra_meta, dict):
+        meta.update(extra_meta)
+    meta.update({"material_query": material})
+
+    # 2) Write POSCAR using your existing pure tool
+    poscar_res = generate_poscar_from_structure(
+        structure_payload=structure_payload,
+        payload_format=pf,
+        cell=cell,
+        supercell=supercell,
+        meta=meta,
+    )
+    return poscar_res
+
+@dft_poscar_agent.tool_plain
 def generate_poscar_from_material(
     material: str,
     specification: Optional[Dict[str, Any]] = None,
@@ -140,7 +197,6 @@ def generate_poscar_from_material(
     warnings: List[str] = []
     spec = specification or {}
 
-    # 1) Ask the MaterialsProjectAgent for candidates
     try:
         # Compose a clear message for your MP agent. Adapt this to your actual MP agent API.
         mp_query_msg = (
@@ -151,7 +207,7 @@ def generate_poscar_from_material(
             f"User specification (optional): {spec}."
         )
         # We rely on your existing orchestration pattern
-        mp_response = poscar_agent.run_sync = False  # silence linters about attribute; not used
+        mp_response = dft_poscar_agent.run_sync = False  # silence linters about attribute; not used
         # Call your MP agent:
         # The call must be awaited at a higher level; here we call synchronously via a blocking run helper.
         # If your environment requires async only, move this orchestration into the coordinator.
@@ -171,7 +227,7 @@ def generate_poscar_from_material(
 
 
 
-@poscar_agent.tool_plain
+@dft_poscar_agent.tool_plain
 def generate_poscar_from_structure(
     structure_payload: Dict[str, Any],
     payload_format: Literal["cif", "pmg_dict"] = "pmg_dict",
@@ -231,36 +287,39 @@ def generate_poscar_from_structure(
 
 
 
-async def call_dft_poscar_agent(ctx: RunContext[AgentState], message2agent: str):
-    """
-    Coordinator entrypoint. Recommended wiring:
 
-    1) Coordinator calls MaterialsProjectAgent to fetch a structure for the user's query
-       (apply user constraints like mp_id, spacegroup, crystal system, lowest energy_above_hull).
-       The MP agent should return either:
+# call agent function
+async def call_poscar_agent(ctx: RunContext[AgentState], message2agent: str):
+    f"""Call general agent to execute the task: {role}
+
+    args:
+        message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
+        This agent is used to generate a POSCAR file for a given material from the materials project. 
+        It can call MaterialsProjectAgent to fetch a structure for the user's query
+        The MP agent would return either:
          - a CIF string, or
          - a pymatgen Structure.as_dict() payload,
          - plus metadata (mp_id, energy_above_hull, spacegroup, formula_pretty).
 
-    2) Coordinator then calls this agent's tool `generate_poscar_from_structure(...)`
-       with that payload + desired cell/supercell.
-
-    This function simply runs the agent for any natural-language guidance, but the
-    actual POSCAR writing should be done by the tool above.
+         - then it can call `generate_poscar_from_structure(...)` with that payload + desired cell/supercell.
     """
-    agent_name = NAME
+    agent_name = "DFTPOSCARAgent"
     deps = ctx.deps
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
-    user_prompt = f"Current Task of your role: {message2agent}"
 
-    result = await poscar_agent.run(user_prompt, deps=deps)
+    user_prompt = "Current Task of your role: {message2agent}"
+
+    result = await dft_poscar_agent.run(
+        user_prompt, deps=deps
+    )
 
     output = result.output
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
 
-    logger.info(f"[{agent_name}] Action: {getattr(output, 'action', None)}")
-    logger.info(f"[{agent_name}] Result: {getattr(output, 'result', None)}")
+    logger.info(f"[{agent_name}] Action: {output.action}")
+    logger.info(f"[{agent_name}] Result: {output.result}")
+
     return output
 
