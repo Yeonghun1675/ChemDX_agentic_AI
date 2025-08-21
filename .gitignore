@@ -4,6 +4,7 @@ __pycache__
 .DS_Store
 *.log
 log.txt
+log_*.txt
 plots
 poscars
 output

@@ -25,14 +25,14 @@ def make_tool_message(result):
                 if tool_name == "final_result" or tool_name.startswith("call_"):
                     continue
                 args = part.args
-                log = f"[Tool-{tool_name}] Tool input: {args}"
+                log = f"[Tool-{tool_name}] Tool input: {args}ㅤ"
                 list_log.append(log)
-            if isinstance(part, ToolReturnPart):
+            elif isinstance(part, ToolReturnPart):
                 tool_name = part.tool_name
                 if tool_name == "final_result" or tool_name.startswith("call_"):
                     continue
                 content = part.content
-                log = f"[Tool-{tool_name}] Tool result: {content}"
+                log = f"[Tool-{tool_name}] Tool result: {content}ㅤ"
                 list_log.append(log)
     return list_log
 
