@@ -22,6 +22,8 @@ agent_color = {
     'DFTPOSCARAgent': '#fff0f1',
     'MPAgent': '#c4c7e2',
     'DatabaseAgent': '#d2e9e1',
+    'MatDXAgent': '#EDF6F9',
+    'MLAgent': '#83C5BE',
 }
 
 agent_emoji = {
@@ -37,6 +39,9 @@ agent_emoji = {
     'DFTPOSCARAgent': '🔧',
     'MPAgent': '🔎',
     'DatabaseAgent': '',
+    'MatDXAgent': '📁',
+    'MLAgent': '❔',
+
 }
 
 
