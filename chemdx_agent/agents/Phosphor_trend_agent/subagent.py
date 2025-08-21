@@ -7,6 +7,7 @@ import pandas as pd
 from pydantic_ai import Agent, RunContext
 from chemdx_agent.schema import AgentState, Result
 from chemdx_agent.logger import logger
+from chemdx_agent.utils import make_tool_message
 
 
 name = "PhosphorTrendAgent"
@@ -29,6 +30,14 @@ phosphor_trend_agent = Agent(
     model_settings={"temperature": 0.0, "parallel_tool_calls": False},
     system_prompt=system_prompt,
 )
+
+@phosphor_trend_agent.system_prompt(dynamic=True)
+def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
+    deps = ctx.deps
+    return working_memory_prompt.format(
+        main_goal = deps.main_task,
+        working_memory = deps.working_memory_description,
+    )
 
 working_memory_prompt = """Main Goal: {main_goal}
 Working Memory: {working_memory}
@@ -147,13 +156,20 @@ def analyze_trend(x_feature: str, y_feature: str, file_path: Optional[str] = Non
 async def call_phosphor_trend_agent(ctx: RunContext[AgentState], message2agent: str):
     deps = ctx.deps
     logger.info(f"[PhosphorTrendAgent] Message2Agent: {message2agent}")
-    result = await phosphor_trend_agent.run(message2agent, deps=deps)
+    
+    user_prompt = f"Current Task of your role: {message2agent}"
+    result = await phosphor_trend_agent.run(user_prompt, deps=deps)
     output = result.output
     deps.add_working_memory("PhosphorTrendAgent", message2agent)
     deps.increment_step()
     deps.add_working_memory(name, message2agent)
     deps.increment_step()
     logger.info(f"[PhosphorTrendAgent] Action: {output.action}")
+    
+    list_tool_log = make_tool_message(result)
+    for log in list_tool_log:
+        logger.info(log)
+    
     logger.info(f"[PhosphorTrendAgent] Result: {output.result}")
     return output
 

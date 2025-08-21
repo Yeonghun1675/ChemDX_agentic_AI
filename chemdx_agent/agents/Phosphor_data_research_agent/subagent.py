@@ -1,6 +1,7 @@
 from pydantic_ai import Agent, RunContext
 from chemdx_agent.schema import AgentState, Result
 from chemdx_agent.logger import logger
+from chemdx_agent.utils import make_tool_message
 from chemdx_agent.agents.phosphor_lookup_agent.subagent import call_phosphor_lookup_agent
 from chemdx_agent.agents.recommend_agent.subagent import call_recommend_agent
 from chemdx_agent.agents.color_trend_agent.subagent import call_color_trend_agent
@@ -42,6 +43,14 @@ phosphor_data_research_agent = Agent(
     system_prompt=system_prompt,
 )
 
+@phosphor_data_research_agent.system_prompt(dynamic=True)
+def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
+    deps = ctx.deps
+    return working_memory_prompt.format(
+        main_goal = deps.main_task,
+        working_memory = deps.working_memory_description,
+    )
+
 # Register downstream subagents as tools of the router
 phosphor_data_research_agent.tool(call_phosphor_lookup_agent)
 phosphor_data_research_agent.tool(call_recommend_agent)
@@ -53,13 +62,20 @@ async def call_phosphor_data_research_agent(ctx: RunContext[AgentState], message
     agent_name = "PhosphorDataResearchAgent"
     deps = ctx.deps or AgentState()
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
-    result = await phosphor_data_research_agent.run(message2agent, deps=deps)
+    
+    user_prompt = f"Current Task of your role: {message2agent}"
+    result = await phosphor_data_research_agent.run(user_prompt, deps=deps)
     output = result.output
     if hasattr(deps, "add_working_memory"):
         deps.add_working_memory(agent_name, message2agent)
     if hasattr(deps, "increment_step"):
         deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
+    
+    list_tool_log = make_tool_message(result)
+    for log in list_tool_log:
+        logger.info(log)
+    
     logger.info(f"[{agent_name}] Result: {output.result}")
     return output
 
