@@ -80,7 +80,7 @@ def _get_numeric(val) -> Optional[float]:
 @phosphor_trend_agent.tool_plain
 def load_phosphor_db(file_path: Optional[str] = None) -> str:
     global _df_cache, _path_cache
-    path = file_path or "databases/Inorganic_Phosphor_Optical_Properties_DB.csv"
+    path = file_path or "chemdx_agent/databases/Inorganic_Phosphor_Optical_Properties_DB.csv"
     if not os.path.exists(path):
         return f"Error: Not found: '{path}'"
     try:
