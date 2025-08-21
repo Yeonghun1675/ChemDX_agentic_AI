@@ -5,6 +5,7 @@ import json
 import asyncio
 from pathlib import Path
 
+from chemdx_agent.schema import AgentState
 from chemdx_agent.main_agent import run_main_agent
 from chemdx_agent.utils import split_line_to_agent_and_message
 
@@ -14,25 +15,25 @@ agent_color = {
     'SampleAgent': '#e6f3ff',
     'ColorTrendAgent': '#e6ffe6',
     'PhosphorDataResearchAgent': '#fff2e6',
-    'MatDXTrendAgent': '#ffe6e6',
-    'ESTMTrendAgent': '#ffe6e6',
-    'PhosphorTrendAgent': '#ffe6e6',
-    'PhosphorLookupAgent': '#ffe6e6',
-    'RecommendAgent': '#ffe6e6',
-    'TrendAgent': '#ffe6e6',
+    'MatDXTrendAgent': '#e6e6ff',
+    'ESTMTrendAgent': '#e6f9ff',
+    'PhosphorTrendAgent': '#ffe6f2',
+    'PhosphorLookupAgent': '#f9e6ff',
+    'RecommendAgent': '#e6fff9',
+    'TrendAgent': '#fff0b3',
 }
 
 agent_emoji = {
     "MainAgent": "💻",
     "SampleAgent": "🔍",
-    'ColorTrendAgent': '🔍',
-    'PhosphorDataResearchAgent': '🔍',
-    'MatDXTrendAgent': '🔍',
-    'ESTMTrendAgent': '🔍',
-    'PhosphorTrendAgent': '🔍',
-    'PhosphorLookupAgent': '🔍',
-    'RecommendAgent': '🔍',
-    'TrendAgent': '🔍',
+    'ColorTrendAgent': '🎨',
+    'PhosphorDataResearchAgent': '📊',
+    'MatDXTrendAgent': '🧪',
+    'ESTMTrendAgent': '🌍',
+    'PhosphorTrendAgent': '💡',
+    'PhosphorLookupAgent': '🔎',
+    'RecommendAgent': '🤖',
+    'TrendAgent': '📈',
 }
 
 
@@ -203,7 +204,8 @@ async def monitor_log_file(log_file_path, placeholder):
 async def run_main_agent_with_logging(question):
     """Run main_agent (logging file handler already outputs to log.txt)"""
     # Run main_agent
-    result = await run_main_agent(question)
+    state = AgentState()
+    result = await run_main_agent(question, state)
     await asyncio.sleep(2)
     return result
 

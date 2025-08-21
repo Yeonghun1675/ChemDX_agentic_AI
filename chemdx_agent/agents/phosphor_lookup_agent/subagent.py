@@ -88,10 +88,10 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
     if env_path := os.getenv("PHOSPHOR_DB_PATH"):
         candidates.append(env_path)
     candidates.extend([
-        "Inorganic_Phosphor_Optical_Properties_DB.csv",  # Use actual database file
-        "data/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
-        "data/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",  # fallback for Excel
-        "data/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls"
+        "databases/Inorganic_Phosphor_Optical_Properties_DB.csv",  # Use actual database file
+        "databases/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
+        "databases/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",  # fallback for Excel
+        "databases/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls"
     ])
     return next((c for c in candidates if c and os.path.exists(c)), None)
 
@@ -109,11 +109,11 @@ def _resolve_paths(file_path: Optional[str]) -> List[str]:
     if env_path := os.getenv("PHOSPHOR_DB_PATH"):
         candidates.extend(_split_paths(env_path))
     candidates.extend([
-        "Inorganic_Phosphor_Optical_Properties_DB.csv",
-        "data/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
-        "data/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",
-        "data/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls",
-        "estm.csv", "MatDX_EF.csv",
+        "databases/Inorganic_Phosphor_Optical_Properties_DB.csv",
+        "databases/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
+        "databases/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",
+        "databases/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls",
+        "databases/estm.csv", "databases/MatDX_EF.csv",
     ])
     seen = set()
     uniq: List[str] = []
@@ -142,7 +142,10 @@ def _get_row(df: pd.DataFrame, formula: str) -> Optional[pd.Series]:
     
     target = str(formula).strip().lower()
     try:
-        match = df[df[formula_col].astype(str).str.strip().str.lower() == target]
+        # Filter out NaN values in formula column
+        df_clean = df.dropna(subset=[formula_col])
+        df_clean = df_clean[df_clean[formula_col].astype(str).str.strip() != '']
+        match = df_clean[df_clean[formula_col].astype(str).str.strip().str.lower() == target]
         return match.iloc[0] if not match.empty else None
     except Exception:
         return None
@@ -189,6 +192,36 @@ def load_phosphor_db(file_path: Optional[str] = None) -> str:
     if not frames:
         return "Error: Resolved files exist but none could be loaded"
     _df_cache = pd.concat(frames, axis=0, ignore_index=True, sort=False)
+    
+    # Clean the database: remove unnamed columns and filter out problematic rows
+    if _df_cache is not None:
+        # Remove columns that start with "Unnamed"
+        unnamed_cols = [col for col in _df_cache.columns if str(col).startswith('Unnamed')]
+        if unnamed_cols:
+            _df_cache = _df_cache.drop(columns=unnamed_cols)
+        
+        # Remove rows where key columns are all NaN
+        key_cols = ['Inorganic phosphor', 'Host', '1st dopant', 'Emission max. (nm)', 'Decay time (ns)']
+        existing_key_cols = [col for col in key_cols if col in _df_cache.columns]
+        if existing_key_cols:
+            _df_cache = _df_cache.dropna(subset=existing_key_cols, how='all')
+        
+        # Remove rows where formula is NaN or contains only whitespace
+        formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
+        if formula_col:
+            _df_cache = _df_cache.dropna(subset=[formula_col])
+            _df_cache = _df_cache[_df_cache[formula_col].astype(str).str.strip() != '']
+        
+        # Remove rows that have too many NaN values (more than 80% NaN)
+        if len(_df_cache.columns) > 0:
+            nan_threshold = len(_df_cache.columns) * 0.8
+            _df_cache = _df_cache.dropna(thresh=len(_df_cache.columns) - nan_threshold)
+        
+        # Clean up string values that are 'nan' or 'NaN'
+        for col in _df_cache.columns:
+            if _df_cache[col].dtype == 'object':
+                _df_cache[col] = _df_cache[col].replace(['nan', 'NaN', ''], pd.NA)
+    
     _path_cache = ";".join(paths)
     return f"Loaded {len(_df_cache)} rows from {len(frames)} sources ({', '.join(names)})"
 
@@ -223,11 +256,14 @@ def lookup_by_formula(formula: str, file_path: Optional[str] = None) -> str:
         return f"Not found: '{formula}' and no formula column available"
     
     # Get unique formulas and calculate similarities
-    formulas = _df_cache[formula_col].astype(str).dropna().unique()
+    # Filter out NaN and empty values
+    df_clean = _df_cache.dropna(subset=[formula_col])
+    df_clean = df_clean[df_clean[formula_col].astype(str).str.strip() != '']
+    formulas = df_clean[formula_col].astype(str).unique()
     target = str(formula).strip().lower()
     
     scored = [(f, difflib.SequenceMatcher(None, target, str(f).lower()).ratio()) 
-              for f in formulas if str(f).strip()]
+              for f in formulas if str(f).strip() and str(f).lower() not in ['nan', '']]
     scored.sort(key=lambda x: x[1], reverse=True)
     
     if not scored:
@@ -272,11 +308,14 @@ def similar_formulas(formula: str, top_k: int = 5, file_path: Optional[str] = No
         return "Error: No formula column found"
     
     # Get unique formulas and calculate similarities
-    formulas = _df_cache[formula_col].astype(str).dropna().unique()
+    # Filter out NaN and empty values
+    df_clean = _df_cache.dropna(subset=[formula_col])
+    df_clean = df_clean[df_clean[formula_col].astype(str).str.strip() != '']
+    formulas = df_clean[formula_col].astype(str).unique()
     target = str(formula).strip().lower()
     
     scored = [(f, difflib.SequenceMatcher(None, target, str(f).lower()).ratio()) 
-              for f in formulas if str(f).strip()]
+              for f in formulas if str(f).strip() and str(f).lower() not in ['nan', '']]
     scored.sort(key=lambda x: x[1], reverse=True)
     
     if not scored:
@@ -316,6 +355,7 @@ def search_candidates(min_emission_nm: float, max_emission_nm: float, max_decay_
     cols = list(df.columns)
     host_col = _find_col(cols, ["host", "matrix"]) or _find_col(cols, ["inorganic phosphor", "formula", "compound"])  # fallback
     dopant_col = _find_col(cols, ["1st dopant", "dopant", "activator"])  # activator element
+    doping_conc_col = _find_col(cols, ["1st doping concentration", "doping concentration", "concentration"])  # doping concentration
     emission_col = _find_col(cols, ["Emission max. (nm)", "emission max", "emission", "lambda_em"])  # nm
     decay_col = _find_col(cols, ["decay time (ns)", "decay", "lifetime", "tau"])  # ns
     iqe_col = _find_col(cols, ["internal quantum efficiency", "int. qe", "iqe", "quantum efficiency"])  # % or fraction
@@ -332,6 +372,12 @@ def search_candidates(min_emission_nm: float, max_emission_nm: float, max_decay_
 
     candidates = []
     for _, row in df.iterrows():
+        # Skip rows with problematic values
+        if host_col and (pd.isna(row.get(host_col)) or str(row.get(host_col)).strip() in ['nan', 'NaN', '']):
+            continue
+        if dopant_col and (pd.isna(row.get(dopant_col)) or str(row.get(dopant_col)).strip() in ['nan', 'NaN', '']):
+            continue
+            
         em = _get_numeric_value(row.get(emission_col))
         dt_ns = _get_numeric_value(row.get(decay_col))
         iqe = _get_numeric_value(row.get(iqe_col))
@@ -358,12 +404,19 @@ def search_candidates(min_emission_nm: float, max_emission_nm: float, max_decay_
         except Exception:
             pass
 
-        host = str(row.get(host_col)) if host_col else "N/A"
-        dopant = str(row.get(dopant_col)) if dopant_col else "N/A"
+        host = str(row.get(host_col)).strip() if host_col and not pd.isna(row.get(host_col)) else "N/A"
+        dopant = str(row.get(dopant_col)).strip() if dopant_col and not pd.isna(row.get(dopant_col)) else "N/A"
+        doping_conc = str(row.get(doping_conc_col)).strip() if doping_conc_col and not pd.isna(row.get(doping_conc_col)) else "N/A"
+        
+        # Skip if host or dopant are still problematic
+        if host in ['nan', 'NaN', ''] or dopant in ['nan', 'NaN', '']:
+            continue
+            
         score = (min(max_emission_nm - em, em - min_emission_nm, key=abs) if min_emission_nm <= em <= max_emission_nm else 0) + (min(100.0, iqe_norm) / 100.0)
         candidates.append({
             "host": host,
             "dopant": dopant,
+            "doping_conc": doping_conc,
             "emission_nm": em,
             "decay_ns": dt_ns,
             "iqe_percent": iqe_norm,
@@ -380,8 +433,9 @@ def search_candidates(min_emission_nm: float, max_emission_nm: float, max_decay_
     ]
     for i, c in enumerate(candidates[:10], 1):
         hex_str = f", hex={c['hex']}" if c.get('hex') else ""
+        doping_str = f", conc={c['doping_conc']}" if c['doping_conc'] != "N/A" else ""
         lines.append(
-            f"{i}. {c['host']}:{c['dopant']} | emission={c['emission_nm']:.0f} nm | decay={c['decay_ns']:.0f} ns | IQE={c['iqe_percent']:.0f}%{hex_str}"
+            f"{i}. {c['host']}:{c['dopant']}{doping_str} | emission={c['emission_nm']:.0f} nm | decay={c['decay_ns']:.0f} ns | IQE={c['iqe_percent']:.0f}%{hex_str}"
         )
     return "\n".join(lines)
 
@@ -453,7 +507,10 @@ def debug_formula_search(formula: str, file_path: Optional[str] = None) -> str:
         return "Error: No formula column found"
     
     # Show all formulas in database
-    all_formulas = _df_cache[formula_col].astype(str).dropna().unique()
+    # Filter out NaN and empty values
+    df_clean = _df_cache.dropna(subset=[formula_col])
+    df_clean = df_clean[df_clean[formula_col].astype(str).str.strip() != '']
+    all_formulas = df_clean[formula_col].astype(str).unique()
     
     target = str(formula).strip().lower()
     
@@ -508,7 +565,8 @@ def debug_formula_search(formula: str, file_path: Optional[str] = None) -> str:
     # Show first 10 formulas in DB for reference
     lines.append("")
     lines.append("FIRST 10 FORMULAS IN DATABASE:")
-    for i, f in enumerate(all_formulas[:10]):
+    valid_formulas = [f for f in all_formulas if str(f).strip() and str(f).lower() not in ['nan', '']]
+    for i, f in enumerate(valid_formulas[:10]):
         lines.append(f"  {i+1}. {f}")
     
     return "\n".join(lines)
@@ -532,16 +590,24 @@ def debug_database_info(file_path: Optional[str] = None) -> str:
     lines.append(f"Total columns: {len(_df_cache.columns)}")
     lines.append("")
     
+    # Filter out unnamed columns for display
+    valid_cols = [col for col in _df_cache.columns if not str(col).startswith('Unnamed')]
+    lines.append(f"Valid columns (excluding unnamed): {len(valid_cols)}")
+    lines.append("")
+    
     lines.append("COLUMNS:")
-    for i, col in enumerate(_df_cache.columns):
+    for i, col in enumerate(valid_cols):
         lines.append(f"  {i+1}. {col}")
     
     lines.append("")
-    lines.append("FIRST 5 ROWS:")
+    lines.append("FIRST 5 ROWS (cleaned):")
     for i, (_, row) in enumerate(_df_cache.head().iterrows()):
         lines.append(f"Row {i+1}:")
-        for col in _df_cache.columns:
-            lines.append(f"  {col}: {row[col]}")
+        for col in valid_cols:
+            val = row[col]
+            # Skip NaN values and show only meaningful data
+            if pd.notna(val) and str(val).strip() not in ['nan', 'NaN', '']:
+                lines.append(f"  {col}: {val}")
         lines.append("")
     
     # Check for formula column specifically
@@ -549,8 +615,12 @@ def debug_database_info(file_path: Optional[str] = None) -> str:
     if formula_col:
         lines.append(f"FORMULA COLUMN FOUND: '{formula_col}'")
         lines.append("FIRST 10 FORMULAS:")
-        formulas = _df_cache[formula_col].astype(str).dropna().unique()
-        for i, f in enumerate(formulas[:10]):
+        # Filter out NaN and empty values
+        df_clean = _df_cache.dropna(subset=[formula_col])
+        df_clean = df_clean[df_clean[formula_col].astype(str).str.strip() != '']
+        formulas = df_clean[formula_col].astype(str).unique()
+        valid_formulas = [f for f in formulas if str(f).strip() and str(f).lower() not in ['nan', '']]
+        for i, f in enumerate(valid_formulas[:10]):
             lines.append(f"  {i+1}. {f}")
     else:
         lines.append("NO FORMULA COLUMN FOUND!")

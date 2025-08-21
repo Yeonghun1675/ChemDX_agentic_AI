@@ -76,7 +76,7 @@ def _get_numeric(val) -> Optional[float]:
 @matdx_agent.tool_plain
 def load_matdx_db(file_path: Optional[str] = None) -> str:
     global _df_cache, _path_cache
-    path = file_path or "MatDX_EF.csv"
+    path = file_path or "databases/MatDX_EF.csv"
     if not os.path.exists(path):
         return f"Error: Not found: '{path}'"
     try:
