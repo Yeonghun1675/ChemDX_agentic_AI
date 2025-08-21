@@ -21,6 +21,10 @@ agent_color = {
     'PhosphorLookupAgent': '#f9e6ff',
     'RecommendAgent': '#e6fff9',
     'TrendAgent': '#fff0b3',
+    'DataVisualisationAgent': '#f3e4f5',
+    'DFTPOSCARAgent': '#fff0f1',
+    'MPAgent': '#c4c7e2',
+    'DatabaseAgent': '#d2e9e1',
 }
 
 agent_emoji = {
@@ -34,6 +38,10 @@ agent_emoji = {
     'PhosphorLookupAgent': '🔎',
     'RecommendAgent': '🤖',
     'TrendAgent': '📈',
+    'DataVisualisationAgent': '📊',
+    'DFTPOSCARAgent': '🔧',
+    'MPAgent': '🔎',
+    'DatabaseAgent': '',
 }
 
 
