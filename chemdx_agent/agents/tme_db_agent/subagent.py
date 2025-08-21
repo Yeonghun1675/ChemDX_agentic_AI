@@ -10,7 +10,9 @@ import numpy as np
 
 # Get the directory of the current file and construct the CSV path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-csv_path = os.path.join(current_dir, "thermoelectrics.csv")
+# Navigate to the databases directory from the current location
+csv_path = os.path.join(current_dir, "../../databases/thermoelectrics.csv")
+csv_path = os.path.abspath(csv_path)  # Resolve the path
 df = pd.read_csv(csv_path)
 
 name = "DatabaseAgent"
@@ -563,7 +565,7 @@ async def call_database_agent(ctx: RunContext[AgentState], message2agent: str):
     args:
         message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
 
-    This agent can look up the thermoelectric materials database to execute a query on thermoelectric materials DB."""
+    This agent can look up the thermoelectric materials database to execute a query on thermoelectric materials DB such as their temperatrue,ZT, and other properties."""
     agent_name = "DatabaseAgent"
     deps = ctx.deps
 

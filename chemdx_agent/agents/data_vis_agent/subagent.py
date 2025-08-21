@@ -198,7 +198,7 @@ async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
     args:
         message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
 
-        This DataVisualisationAgent is used to plot the data from the database and return the figure path and the data path.
+        This DataVisualisationAgent is used to visualise the desired data and return the figure path and the data path.
     """
     agent_name = "VisualisationAgent"
     deps = ctx.deps
