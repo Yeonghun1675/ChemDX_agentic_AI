@@ -51,6 +51,10 @@ name = "PhosphorLookupAgent"
 role = "Look up phosphor data (emission, decay, color) from Inorganic_Phosphor CSV DB"
 context = "Use provided tools. DB path: PHOSPHOR_DB_PATH env var or ./data/Inorganic_Phosphor.csv"
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 system_prompt = f"""You are {name}. {role}. {context}"""
 
 phosphor_agent = Agent(
@@ -83,6 +87,34 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
     return next((c for c in candidates if c and os.path.exists(c)), None)
 
 
+def _split_paths(text: str) -> List[str]:
+    for sep in [";", ",", ":"]:
+        text = text.replace(sep, "|")
+    return [p.strip() for p in text.split("|") if p.strip()]
+
+
+def _resolve_paths(file_path: Optional[str]) -> List[str]:
+    candidates: List[str] = []
+    if file_path:
+        candidates.extend(_split_paths(file_path))
+    if env_path := os.getenv("PHOSPHOR_DB_PATH"):
+        candidates.extend(_split_paths(env_path))
+    candidates.extend([
+        "Inorganic_Phosphor_Optical_Properties_DB.csv",
+        "data/Inorganic_Phosphor.csv", "Inorganic_Phosphor.csv",
+        "data/Inorganic_Phosphor.xlsx", "Inorganic_Phosphor.xlsx",
+        "data/Inorganic_Phosphor.xls", "Inorganic_Phosphor.xls",
+        "estm.csv", "MatDX_EF.csv",
+    ])
+    seen = set()
+    uniq: List[str] = []
+    for c in candidates:
+        if c and c not in seen:
+            seen.add(c)
+            uniq.append(c)
+    return [c for c in uniq if os.path.exists(c)]
+
+
 def _find_col(columns: List[str], keywords: List[str]) -> Optional[str]:
     """Find column by keywords (case-insensitive contains)"""
     lower_cols = {c.lower(): c for c in columns}
@@ -95,7 +127,7 @@ def _find_col(columns: List[str], keywords: List[str]) -> Optional[str]:
 
 def _get_row(df: pd.DataFrame, formula: str) -> Optional[pd.Series]:
     """Get row by formula (case-insensitive exact match)"""
-    formula_col = _find_col(list(df.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(df.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if not formula_col:
         return None
     
@@ -115,24 +147,41 @@ def _get_numeric(row: pd.Series, col: str) -> Optional[float]:
         return None
 
 
+def _get_numeric_value(val) -> Optional[float]:
+    """Extract numeric from a scalar, handling percentage strings like '85%'"""
+    try:
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return None
+        text = str(val).strip()
+        if text.endswith('%'):
+            return float(pd.to_numeric(text[:-1]))
+        return float(pd.to_numeric(text))
+    except Exception:
+        return None
+
+
 @phosphor_agent.tool_plain
 def load_phosphor_db(file_path: Optional[str] = None) -> str:
-    """Load Inorganic_Phosphor CSV database into memory"""
+    """Load and combine CSV/Excel databases into memory for lookup agent."""
     global _df_cache, _path_cache
-    
-    resolved = _resolve_path(file_path)
-    if not resolved:
-        return "Error: Could not resolve DB path. Set PHOSPHOR_DB_PATH or place at ./data/Inorganic_Phosphor.csv"
-    
-    try:
-        if resolved.endswith('.csv'):
-            _df_cache = pd.read_csv(resolved)
-        else:
-            _df_cache = pd.read_excel(resolved)
-        _path_cache = resolved
-        return f"Loaded {len(_df_cache)} rows from '{resolved}'"
-    except Exception as exc:
-        return f"Error loading '{resolved}': {exc}"
+    paths = _resolve_paths(file_path)
+    if not paths:
+        return "Error: Could not resolve any DB file"
+    frames: List[pd.DataFrame] = []
+    names: List[str] = []
+    for p in paths:
+        try:
+            df = pd.read_csv(p) if p.lower().endswith('.csv') else pd.read_excel(p)
+            df["source"] = os.path.basename(p)
+            frames.append(df)
+            names.append(os.path.basename(p))
+        except Exception:
+            continue
+    if not frames:
+        return "Error: Resolved files exist but none could be loaded"
+    _df_cache = pd.concat(frames, axis=0, ignore_index=True, sort=False)
+    _path_cache = ";".join(paths)
+    return f"Loaded {len(_df_cache)} rows from {len(frames)} sources ({', '.join(names)})"
 
 
 @phosphor_agent.tool_plain
@@ -148,10 +197,11 @@ def lookup_by_formula(formula: str, file_path: Optional[str] = None) -> str:
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    if row := _get_row(_df_cache, formula):
+    row = _get_row(_df_cache, formula)
+    if row is not None:
         columns = list(_df_cache.columns)
-        emission_col = _find_col(columns, ["emission", "em_max", "emission_max", "lambda_em"])
-        decay_col = _find_col(columns, ["decay", "lifetime", "tau"])
+        emission_col = _find_col(columns, ["emission", "em_max", "emission_max", "lambda_em", "emission max. (nm)"])
+        decay_col = _find_col(columns, ["decay", "lifetime", "tau", "decay time (ns)"])
         
         emission = _get_numeric(row, emission_col) if emission_col else None
         decay = _get_numeric(row, decay_col) if decay_col else None
@@ -208,7 +258,7 @@ def similar_formulas(formula: str, top_k: int = 5, file_path: Optional[str] = No
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if not formula_col:
         return "Error: No formula column found"
     
@@ -239,6 +289,95 @@ def similar_formulas(formula: str, top_k: int = 5, file_path: Optional[str] = No
 
 
 @phosphor_agent.tool_plain
+def search_candidates(min_emission_nm: float, max_emission_nm: float, max_decay_ns: float, min_iqe_percent: float, file_path: Optional[str] = None) -> str:
+    """Search phosphor candidates that satisfy emission range [min,max] (nm), decay time <= max_decay_ns, and internal QE >= min_iqe_percent.
+
+    Returns a ranked list with host, dopant, emission, decay, IQE, CIE/hex color if available.
+    """
+    global _df_cache
+
+    if _df_cache is None or (file_path and file_path != _path_cache):
+        status = load_phosphor_db(file_path)
+        if status.startswith("Error"):
+            return status
+    if _df_cache is None:
+        return "Error: Database not loaded"
+
+    df = _df_cache
+    cols = list(df.columns)
+    host_col = _find_col(cols, ["host", "matrix"]) or _find_col(cols, ["inorganic phosphor", "formula", "compound"])  # fallback
+    dopant_col = _find_col(cols, ["1st dopant", "dopant", "activator"])  # activator element
+    emission_col = _find_col(cols, ["Emission max. (nm)", "emission max", "emission", "lambda_em"])  # nm
+    decay_col = _find_col(cols, ["decay time (ns)", "decay", "lifetime", "tau"])  # ns
+    iqe_col = _find_col(cols, ["internal quantum efficiency", "int. qe", "iqe", "quantum efficiency"])  # % or fraction
+    x_col = _find_col(cols, ["CIE x coordinate", "chromaticity x", "cie x", "x"])  # cie x
+    y_col = _find_col(cols, ["CIE y coordinate", "chromaticity y", "cie y", "y"])  # cie y
+    Y_col = _find_col(cols, ["Y", "luminance", "intensity"])  # luminance optional
+
+    if not emission_col:
+        return "Error: Emission column not found in DB"
+    if not decay_col:
+        return "Error: Decay time column not found in DB"
+    if not iqe_col:
+        return "Error: Internal QE column not found in DB"
+
+    candidates = []
+    for _, row in df.iterrows():
+        em = _get_numeric_value(row.get(emission_col))
+        dt_ns = _get_numeric_value(row.get(decay_col))
+        iqe = _get_numeric_value(row.get(iqe_col))
+        if em is None or dt_ns is None or iqe is None:
+            continue
+        if not (min_emission_nm <= em <= max_emission_nm):
+            continue
+        if not (dt_ns <= max_decay_ns):
+            continue
+        # IQE might be 0-1 or 0-100; normalize heuristically
+        iqe_norm = iqe * 100.0 if iqe <= 1.0 else iqe
+        if iqe_norm < min_iqe_percent:
+            continue
+
+        # color via CIE if available
+        hex_color = None
+        color_name = None
+        try:
+            x = _get_numeric_value(row.get(x_col)) if x_col else None
+            y = _get_numeric_value(row.get(y_col)) if y_col else None
+            Y = _get_numeric_value(row.get(Y_col)) if Y_col else 1.0
+            if x is not None and y is not None and Y is not None:
+                hex_color = xyY_to_hex(x, y, Y)
+        except Exception:
+            pass
+
+        host = str(row.get(host_col)) if host_col else "N/A"
+        dopant = str(row.get(dopant_col)) if dopant_col else "N/A"
+        score = (min(max_emission_nm - em, em - min_emission_nm, key=abs) if min_emission_nm <= em <= max_emission_nm else 0) + (min(100.0, iqe_norm) / 100.0)
+        candidates.append({
+            "host": host,
+            "dopant": dopant,
+            "emission_nm": em,
+            "decay_ns": dt_ns,
+            "iqe_percent": iqe_norm,
+            "hex": hex_color,
+            "score": score,
+        })
+
+    if not candidates:
+        return "No candidates matched all constraints"
+
+    candidates.sort(key=lambda x: x["score"], reverse=True)
+    lines: List[str] = [
+        f"Candidates for {min_emission_nm}-{max_emission_nm} nm, decay <= {max_decay_ns} ns, IQE >= {min_iqe_percent}%:",
+    ]
+    for i, c in enumerate(candidates[:10], 1):
+        hex_str = f", hex={c['hex']}" if c.get('hex') else ""
+        lines.append(
+            f"{i}. {c['host']}:{c['dopant']} | emission={c['emission_nm']:.0f} nm | decay={c['decay_ns']:.0f} ns | IQE={c['iqe_percent']:.0f}%{hex_str}"
+        )
+    return "\n".join(lines)
+
+
+@phosphor_agent.tool_plain
 def formula_to_hex_color(formula: str, file_path: Optional[str] = None) -> str:
     """Convert formula to hex color using CIE values from DB"""
     global _df_cache
@@ -251,24 +390,25 @@ def formula_to_hex_color(formula: str, file_path: Optional[str] = None) -> str:
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    if not (row := _get_row(_df_cache, formula)):
+    row = _get_row(_df_cache, formula)
+    if row is None:
         return f"Not found: '{formula}'"
     
     columns = list(_df_cache.columns)
     
     # Try xyY first, then XYZ
-    x_col = _find_col(columns, ["x", "cie_x", "chromaticity x"])
-    y_col = _find_col(columns, ["y", "cie_y", "chromaticity y"]) 
-    Y_col = _find_col(columns, ["Y", "cie_y", "luminance", "intensity"])
+    x_col = _find_col(columns, ["CIE x coordinate", "x", "cie_x", "chromaticity x", "cie x"])
+    y_col = _find_col(columns, ["CIE y coordinate", "y", "cie_y", "chromaticity y", "cie y"]) 
+    Y_col = _find_col(columns, ["Y", "cie_y", "luminance", "intensity"]) 
     
-    if all(col for col in [x_col, y_col, Y_col]):
+    if x_col and y_col:
         x_val = _get_numeric(row, x_col)
         y_val = _get_numeric(row, y_col)
-        Y_val = _get_numeric(row, Y_col)
-        if all(v is not None for v in [x_val, y_val, Y_val]):
+        Y_val = _get_numeric(row, Y_col) if Y_col else 1.0
+        if x_val is not None and y_val is not None and Y_val is not None:
             hex_str = xyY_to_hex(x_val, y_val, Y_val)
             if not hex_str.startswith("Error"):
-                return f"Formula: {formula}; Color: {hex_str}; Source: xyY({x_val}, {y_val}, {Y_val})"
+                return f"Formula: {formula}; Color: {hex_str}; Source: xyY(x={x_val}, y={y_val}, Y={Y_val})"
     
     # Fallback to XYZ
     X_col = _find_col(columns, ["X", "cie_x", "tristimulus x"])
@@ -299,7 +439,7 @@ def debug_formula_search(formula: str, file_path: Optional[str] = None) -> str:
     if _df_cache is None:
         return "Error: Database not loaded"
     
-    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if not formula_col:
         return "Error: No formula column found"
     
@@ -396,7 +536,7 @@ def debug_database_info(file_path: Optional[str] = None) -> str:
         lines.append("")
     
     # Check for formula column specifically
-    formula_col = _find_col(list(_df_cache.columns), ["formula", "compound", "name"])
+    formula_col = _find_col(list(_df_cache.columns), ["inorganic phosphor", "formula", "compound", "name"])
     if formula_col:
         lines.append(f"FORMULA COLUMN FOUND: '{formula_col}'")
         lines.append("FIRST 10 FORMULAS:")
@@ -422,19 +562,21 @@ async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent:
         - formula_to_hex_color: Convert formula to hex color using CIE xyY/XYZ values from database
         
         Example messages:
-        - "Load the phosphor database from './data/Inorganic_Phosphor.csv'"
+        - "Load the phosphor database from Inorganic_Phosphor_Optical_Properties_DB.csv"
         - "Find emission and decay for formula 'SrAl2O4:Eu2+'"
         - "Find 5 most similar formulas to 'YAG:Ce' with their emission and decay data"
         - "Convert formula 'SrAl2O4:Eu2+' to hex color using CIE values from the database"
     """
-    print ('hello')
     agent_name = "PhosphorLookupAgent"
-    deps = ctx.deps
+    deps = ctx.deps or AgentState()
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await phosphor_agent.run(message2agent, deps=deps)
     output = result.output
-    
+    if hasattr(deps, "add_working_memory"):
+        deps.add_working_memory(agent_name, message2agent)
+    if hasattr(deps, "increment_step"):
+        deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     
