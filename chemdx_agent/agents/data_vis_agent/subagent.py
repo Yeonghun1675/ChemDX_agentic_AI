@@ -10,12 +10,32 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+# -----------------------------
+
+name = "DataVisualisationAgent"
+role = "You take in data and create graphs or plots using matplotlib and seaborn."
+context = "Important Context that agent should be know. For example, you must not use numpy array. instead, use pandas DataFrame."
+
+
+system_prompt = f"""You are the {name}. You can use available tools or request help from specialized sub-agents that perform specific tasks. You must only carry out the role assigned to you. If a request is outside your capabilities, you should ask for support from the appropriate agent instead of trying to handle it yourself.
+
+Your Currunt Role: {role}
+Important Context: {context}
+"""
+
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 viz_agent = Agent(
-    model="openai:gpt-4o",
-    output_type=dict,
-    deps_type=AgentState,
-    system_prompt="You strictly plot from DB rows; never invent data.",
-    model_settings={"temperature": 0.0},
+    model = "openai:gpt-4o",
+    output_type = Result,
+    deps_type = AgentState,
+    model_settings = {
+        "temperature": 0.0,
+        "parallel_tool_calls": False,
+    },
+    system_prompt = system_prompt,
 )
 
 def _outfile(prefix="plot", ext="png"):
@@ -83,3 +103,34 @@ async def plot_yt_vs_T_for_best(
     df.to_csv(data_path, index=False)
 
     return {"ok": True, "figure_path": fig_path, "data_csv_path": data_path, "formula": formula}
+
+
+
+    # call agent function
+async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
+    f"""Call general agent to execute the task: {role}
+
+    args:
+        message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
+
+        This DataVisualisationAgent is used to plot the data from the database and return the figure path and the data path.
+    """
+    agent_name = "VisualisationAgent"
+    deps = ctx.deps
+
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+
+    user_prompt = "Current Task of your role: {message2agent}"
+
+    result = await viz_agent.run(
+        user_prompt, deps=deps
+    )
+
+    output = result.output
+    deps.add_working_memory(agent_name, message2agent)
+    deps.increment_step()
+
+    logger.info(f"[{agent_name}] Action: {output.action}")
+    logger.info(f"[{agent_name}] Result: {output.result}")
+
+    return output
