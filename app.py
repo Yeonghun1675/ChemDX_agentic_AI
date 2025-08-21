@@ -1,6 +1,7 @@
 import streamlit as st
 import asyncio
 import os
+import re
 import json
 import asyncio
 from pathlib import Path
@@ -91,6 +92,12 @@ def _display_line(line, displayed_lines):
         
         message_box(agent_name, message_type, message, color, emoji, is_tool)
         displayed_lines.add(line)
+
+        is_gen_images = re.findall(r"'.+\.png'", message)
+        if is_gen_images:
+            for image_path in is_gen_images:
+                st.image(image_path)
+
         return True
     except Exception as e:
         # Display as default if parsing fails

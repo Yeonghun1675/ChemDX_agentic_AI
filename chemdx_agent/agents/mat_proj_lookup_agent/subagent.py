@@ -297,7 +297,7 @@ async def call_mp_agent(ctx: RunContext[AgentState], message2agent: str):
     agent_name = "MaterialsProjectAgent"
     deps = ctx.deps
 
-    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}ㅤ")
     user_prompt = f"Current Task of your role: {message2agent}"
 
     result = await mp_agent.run(user_prompt, deps=deps)
@@ -306,7 +306,7 @@ async def call_mp_agent(ctx: RunContext[AgentState], message2agent: str):
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
 
-    logger.info(f"[{agent_name}] Action: {getattr(output, 'action', None)}")
-    logger.info(f"[{agent_name}] Result: {getattr(output, 'result', None)}")
+    logger.info(f"[{agent_name}] Action: {getattr(output, 'action', None)}ㅤ")
+    logger.info(f"[{agent_name}] Result: {getattr(output, 'result', None)}ㅤ")
     return output
 
