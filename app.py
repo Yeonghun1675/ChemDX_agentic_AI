@@ -1,12 +1,12 @@
 import streamlit as st
 import asyncio
 import os
-import re
 import json
 import asyncio
 from pathlib import Path
 
 from chemdx_agent.main_agent import run_main_agent
+from chemdx_agent.utils import split_line_to_agent_and_message
 
 
 agent_color = {
@@ -24,17 +24,7 @@ agent_emoji = {
     "SampleAgent": "🔍",
 }
 
-def split_line_to_agent_and_message(line: str):
-    if line.startswith("[Question]"):
-        return "MainAgent", "Question", line.replace("[Question]", "").strip()
-    elif line.startswith("[Final Answer]"):
-        return "MainAgent", "Final Answer", line.replace("[Final Answer]", "").strip() 
-    elif line.startswith("[Evaluation]"):
-        return "MainAgent", "Evaluation", line.replace("[Evaluation]", "").strip()
-    else:
-        agent, message_type, message = re.match(r"^\[(.+?)\](.+?):(.+)", line).groups()
 
-        return agent.strip(), message_type.strip(), message.strip()
 
 def message_box(agent_name, message_type, content, color="#f0f2f6", emoji="🤖", is_tool=False):
     margin_left = "margin-left: 20px;" if is_tool else ""
@@ -48,6 +38,121 @@ def message_box(agent_name, message_type, content, color="#f0f2f6", emoji="🤖"
         """,
         unsafe_allow_html=True,
     )
+
+def _process_message_content(message):
+    """Process message content and convert JSON to bullet points if possible"""
+    try:
+        message_json = json.loads(message.strip())
+        new_message = ""
+        for key, value in message_json.items():
+            new_message += f"• {key}: {value}\n\n"
+        return new_message.strip()
+    except:
+        return message
+
+def _get_agent_styling(agent):
+    """Get color, emoji, and tool status for an agent"""
+    if agent.startswith("Tool-"):
+        return "#9A9DEB", "🔧", agent.replace("Tool-", ""), True
+    else:
+        color = agent_color.get(agent, "#f0f2f6")
+        emoji = agent_emoji.get(agent, "🤖")
+        return color, emoji, agent, False
+
+def _display_line(line, displayed_lines):
+    """Display a single line if it hasn't been displayed yet"""
+    if line in displayed_lines:
+        return False
+    
+    try:
+        agent, message_type, message = split_line_to_agent_and_message(line)
+        message = _process_message_content(message)
+        color, emoji, agent_name, is_tool = _get_agent_styling(agent)
+        
+        message_box(agent_name, message_type, message, color, emoji, is_tool)
+        displayed_lines.add(line)
+        return True
+    except Exception as e:
+        # Display as default if parsing fails
+        message_box("System", "Log", line, "#f0f2f6")
+        displayed_lines.add(line)
+        return True
+
+def generate_mermaid_flowchart(agent_sequence):
+    """
+    Generate mermaid flowchart code from agent sequence
+    
+    Args:
+        agent_sequence: List of agent names like ['MainAgent', 'SampleAgent', ...]
+    
+    Returns:
+        str: Mermaid flowchart code
+    """
+    if not agent_sequence:
+        return ""
+    
+    # Remove consecutive duplicates
+    cleaned_sequence = []
+    for i, agent in enumerate(agent_sequence):
+        if i == 0 or agent != agent_sequence[i-1]:
+            cleaned_sequence.append(agent)
+    
+    # Add start and end
+    if cleaned_sequence:
+        cleaned_sequence = ['start'] + cleaned_sequence + ['end']
+    
+    # Generate mermaid code
+    mermaid_code = "```mermaid\nflowchart TD\n"
+    
+    # Add nodes
+    for i, agent in enumerate(cleaned_sequence):
+        if agent == 'start':
+            mermaid_code += f"    {agent}[Start]\n"
+        elif agent == 'end':
+            mermaid_code += f"    {agent}[End]\n"
+        else:
+            mermaid_code += f"    {agent}[{agent}]\n"
+    
+    # Add connections
+    for i in range(len(cleaned_sequence) - 1):
+        current = cleaned_sequence[i]
+        next_agent = cleaned_sequence[i + 1]
+        mermaid_code += f"    {current} --> {next_agent}\n"
+    
+    mermaid_code += "```"
+    
+    return mermaid_code
+
+def extract_agent_sequence_from_log():
+    """Extract agent sequence from log.txt file"""
+    agent_sequence = []
+    log_file_path = Path("log.txt")
+    
+    if not log_file_path.exists():
+        return agent_sequence
+    
+    try:
+        with open(log_file_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                if line.strip():
+                    try:
+                        agent, _, _ = split_line_to_agent_and_message(line)
+                        agent_sequence.append(agent)
+                    except:
+                        continue
+    except Exception as e:
+        st.error(f"Error reading log file: {e}")
+    
+    return agent_sequence
+
+def display_agent_flowchart(agent_sequence):
+    """Display mermaid flowchart in Streamlit with expandable section"""
+    mermaid_code = generate_mermaid_flowchart(agent_sequence)
+    if mermaid_code:
+        with st.expander("📊 Agent Flow Chart", expanded=False):
+            st.markdown("### Agent Execution Flow")
+            st.code(mermaid_code, language="mermaid")
+            st.markdown(mermaid_code)
 
 async def monitor_log_file(log_file_path, placeholder):
     """Monitor log.txt file in real-time and stream to Streamlit (asyncio-based)"""
@@ -63,49 +168,24 @@ async def monitor_log_file(log_file_path, placeholder):
             with open(log_file_path, 'r', encoding='utf-8') as f:
                 f.seek(last_position)
                 new_content = f.read()
-                if new_content:
-                    # Add new lines
-                    new_lines = new_content.split('\n')
-                    for line in new_lines:
-                        if line.strip() and line not in accumulated_lines:
-                            accumulated_lines.append(line)
-                    
-                    # Display only new lines (skip already displayed ones)
-                    for line in accumulated_lines:
-                        if line not in displayed_lines:
-                            try:
-                                agent, message_type, message = split_line_to_agent_and_message(line)
-
-                                try:
-                                    message_json = json.loads(message.strip())
-                                    new_message = ""
-                                    for key, value in message_json.items():
-                                        new_message += f"• {key}: {value}\n\n"
-                                    message = new_message.strip()
-                                except:
-                                    pass
-                                
-                                is_tool = False
-                                if agent.startswith("Tool-"):
-                                    color = "#9A9DEB"
-                                    emoji = "🔧"
-                                    agent = agent.replace("Tool-", "")
-                                    is_tool = True
-                                else:
-                                    color = agent_color.get(agent, "#f0f2f6")
-                                    emoji = agent_emoji.get(agent, "🤖")          
-
-                                message_box(agent, message_type, message, color, emoji, is_tool)
-                                
-                                # Track completed lines
-                                displayed_lines.add(line)
-                            except Exception as e:
-                                # Display as default if parsing fails
-                                message_box("System", "Log", line, "#f0f2f6")
-                                displayed_lines.add(line)
-                    
-                    last_position = f.tell()
+                
+                if not new_content:
+                    await asyncio.sleep(0.1)
+                    continue
+                
+                # Add new lines
+                new_lines = new_content.split('\n')
+                for line in new_lines:
+                    if line.strip() and line not in accumulated_lines:
+                        accumulated_lines.append(line)
+                
+                # Display only new lines
+                for line in accumulated_lines:
+                    _display_line(line, displayed_lines)
+                
+                last_position = f.tell()
                 await asyncio.sleep(0.1)  # Check every 100ms
+                
         except Exception as e:
             break
 
@@ -187,6 +267,14 @@ def run_demo():
                 # Display using existing method if error occurs
                 st.text_area('', value=text, height=100,
                              max_chars=None, key=None)
+            
+            # Display agent flow chart at the end
+            st.markdown("---")
+            agent_sequence = extract_agent_sequence_from_log()
+            if agent_sequence:
+                display_agent_flowchart(agent_sequence)
+            else:
+                st.info("No agent execution log found.")
 
         else:
             st.warning('Please enter a question.')

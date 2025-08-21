@@ -5,5 +5,6 @@ dotenv
 tiktoken
 pandas
 requests
+streamlit
 mp-api
 pymatgen
