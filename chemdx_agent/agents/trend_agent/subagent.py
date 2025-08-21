@@ -56,7 +56,22 @@ trend_agent.tool(call_phosphor_trend_agent)
 
 
 async def call_trend_agent(ctx: RunContext[AgentState], message2agent: str):
-    """Call the Trend router agent. It will choose MatDX/ESTM/Phosphor trend subagent."""
+    """Call the Trend router agent.
+
+    Accepts a user query and dispatches exactly one of the MatDX/ESTM/Phosphor
+    trend subagents. It explicitly supports property-to-property trend comparison
+    requests (e.g., Seebeck vs. electrical conductivity, emission wavelength vs.
+    CIE x/y, decay time vs. dopant concentration) and forwards the full context
+    to the appropriate dataset domain (MatDX_EF, ESTM, phosphor optical DB).
+
+    Behavior:
+    - Logs the input and passes the agent state (deps).
+    - Invokes exactly one chosen subagent.
+    - Logs and returns the action and result.
+
+    Returns:
+    - Result model containing the selected action and the final text/structured output.
+    """
     agent_name = "TrendAgent"
     deps = ctx.deps or AgentState()
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
