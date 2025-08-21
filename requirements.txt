@@ -5,6 +5,10 @@ dotenv
 tiktoken
 pandas
 requests
-streamlit
+matplotlib
+numpy
 mp-api
 pymatgen
+seaborn 
+streamlit
+
