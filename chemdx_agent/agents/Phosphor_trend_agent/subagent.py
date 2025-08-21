@@ -86,7 +86,13 @@ def _get_numeric(val) -> Optional[float]:
 @phosphor_trend_agent.tool_plain
 def load_phosphor_db(file_path: Optional[str] = None) -> str:
     global _df_cache, _path_cache
-    path = file_path or default_csv_path
+    
+    # If file_path is just a filename (not a full path), use default_csv_path
+    if file_path and not os.path.isabs(file_path) and not os.path.dirname(file_path):
+        path = default_csv_path
+    else:
+        path = file_path or default_csv_path
+    
     if not os.path.exists(path):
         return f"Error: Not found: '{path}'"
     try:
