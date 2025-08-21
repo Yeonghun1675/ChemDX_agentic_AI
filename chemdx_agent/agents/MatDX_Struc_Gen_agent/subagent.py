@@ -166,6 +166,7 @@ async def struct_gen_function(
     ctx: RunContext[AgentState],
     formula: str,
     material_id: Optional[str] = None,
+    space_group_filter: Optional[str] = None,
     out_dir: Optional[str] = None,
     preview_lines: int = 60,
     return_text: bool = True
@@ -178,25 +179,87 @@ async def struct_gen_function(
 
     key = formula.strip().lower()
     sub = df[df["formula"].astype(str).str.strip().str.lower() == key]
+    # optional space group filtering
+    if space_group_filter:
+        sg_key = space_group_filter.strip().lower()
+        sub_sg = sub[sub["space_group"].astype(str).str.strip().str.lower() == sg_key]
+        if not sub_sg.empty:
+            sub = sub_sg
     if sub.empty:
         return {"status": "error", "formula": formula, "message": "No exact match found for the given formula."}
 
+    chosen_row = None
     if material_id:
         sub2 = sub[sub["id"].astype(str) == str(material_id)]
-        if sub2.empty:
+        if not sub2.empty:
+            # prefer rows we can parse
+            for _, r in sub2.iterrows():
+                if _parse_structure_cell(r["structure"]) is not None:
+                    chosen_row = r
+                    break
+            if chosen_row is None:
+                chosen_row = sub2.iloc[0]
+        else:
             return {"status": "error", "formula": formula,
                     "message": f"No entry found for formula='{formula}' with id='{material_id}'."}
-        row = sub2.iloc[0]
-    else:
-        row = sub.iloc[0]
+    if chosen_row is None:
+        # pick the first parseable row; else first row
+        for _, r in sub.iterrows():
+            if _parse_structure_cell(r["structure"]) is not None:
+                chosen_row = r
+                break
+        if chosen_row is None:
+            chosen_row = sub.iloc[0]
 
+    row = chosen_row
     struct = _parse_structure_cell(row["structure"])
+
+    warnings: List[str] = []
+    # If DB structure is missing/unparseable, attempt fallback via Materials Project
     if struct is None:
-        return PoscarResult(
-            ok=False,
-            error=f"Failed to parse structure cell into a valid structure for {formula}",
-            warnings=[]
-        )
+        warnings.append("DB structure missing/unparseable; attempting Materials Project fallback")
+        try:
+            from chemdx_agent.agents.mat_proj_lookup_agent.subagent import get_best_structure
+            spec: Dict[str, Any] = {}
+            if space_group_filter:
+                spec["spacegroup"] = space_group_filter
+            mp_result = get_best_structure(formula, spec or None, payload_format="pmg_dict")
+            if mp_result.get("ok"):
+                payload_format = mp_result.get("payload_format", "pmg_dict")
+                payload = mp_result.get("structure_payload")
+                if payload_format == "pmg_dict" and isinstance(payload, dict):
+                    try:
+                        struct = Structure.from_dict(payload)
+                    except Exception:
+                        struct = None
+                elif payload_format == "cif" and isinstance(payload, dict) and isinstance(payload.get("cif"), str):
+                    try:
+                        struct = Structure.from_str(payload.get("cif"), fmt="cif")
+                    except Exception:
+                        struct = None
+                if struct is None:
+                    return PoscarResult(
+                        ok=False,
+                        error=f"Failed to build structure from Materials Project payload for {formula}",
+                        warnings=warnings
+                    )
+                # replace row space group with MP metadata if available
+                try:
+                    sg = str(mp_result.get("meta", {}).get("spacegroup", row.get("space_group", "")))
+                except Exception:
+                    sg = str(row.get("space_group", ""))
+            else:
+                return PoscarResult(
+                    ok=False,
+                    error=f"Materials Project fallback failed: {mp_result.get('error', 'Unknown error')}",
+                    warnings=warnings
+                )
+        except Exception as e:
+            return PoscarResult(
+                ok=False,
+                error=f"Failed to parse DB structure and MP fallback errored: {str(e)}",
+                warnings=warnings
+            )
 
     # prepare output directory
     if out_dir is None:
@@ -205,8 +268,8 @@ async def struct_gen_function(
         out_dir = Path(out_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    mid = str(row["id"])
-    sg = str(row["space_group"])
+    mid = str(row["id"]) if "id" in row else ""
+    sg = str(row["space_group"]) if "space_group" in row else locals().get("sg", "")
     safe_formula = "".join(ch for ch in formula if ch.isalnum() or ch in ("_", "-", "+"))
     safe_id = "".join(ch for ch in mid if ch.isalnum() or ch in ("_", "-", "+"))
 
@@ -291,7 +354,9 @@ async def struct_gen_function(
             "cif_display": f"./outputs/struc_output/{cif_path.name}",
             "poscar_content": poscar_content,
             "cif_content": cif_content,
-            "message": "Both POSCAR and CIF files successfully generated."
+            "message": "Both POSCAR and CIF files successfully generated.",
+            "warnings": warnings,
+            "source": "MatDX_DB" if not warnings else "MP_fallback"
         }
     )
 
