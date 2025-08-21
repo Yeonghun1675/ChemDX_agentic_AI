@@ -26,9 +26,9 @@ agent_color = {
     'MatDXAgent': '#EDF6F9',
     'MLAgent': '#83C5BE',
     "DftPoscarAgent": "#f5d6eb",   
-    "MatProjLookupAgent": "#d8c8f0", 
-    "TmeDatabaseAgent": "#c6e8f7",  
-    "DataVisualisationAgent": "#c9f2d0", 
+    "MaterialsProjectAgent": "#d8c8f0", 
+    "DatabaseAgent": "#c6e8f7",  
+    "VisualisationAgent": "#f5d6eb", 
 }
 
 agent_emoji = {
@@ -47,9 +47,9 @@ agent_emoji = {
     'MatDXAgent': '📁',
     'MLAgent': '❔',
     'DftPoscarAgent': '🔧',
-    'MatProjLookupAgent': '🔎',
-    'TmeDatabaseAgent': '📊',
-    'DataVisualisationAgent': '📊',
+    'MaterialsProjectAgent': '🔎',
+    'DatabaseAgent': '📊',
+    'VisualisationAgent': '📊',
 }
 
 
