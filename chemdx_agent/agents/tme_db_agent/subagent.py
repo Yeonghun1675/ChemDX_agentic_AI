@@ -13,7 +13,65 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 # Navigate to the databases directory from the current location
 csv_path = os.path.join(current_dir, "../../databases/thermoelectrics.csv")
 csv_path = os.path.abspath(csv_path)  # Resolve the path
-df = pd.read_csv(csv_path)
+
+# More robust path resolution
+try:
+    if not os.path.exists(csv_path):
+        # Try alternative paths
+        alt_paths = [
+            os.path.join(os.getcwd(), "chemdx_agent/databases/thermoelectrics.csv"),
+            os.path.join(os.path.dirname(os.getcwd()), "chemdx_agent/databases/thermoelectrics.csv"),
+            "chemdx_agent/databases/thermoelectrics.csv",
+            # Add more specific paths for different working directories
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_dir)))), "chemdx_agent/databases/thermoelectrics.csv"),
+            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(current_dir))), "chemdx_agent/databases/thermoelectrics.csv")
+        ]
+        for alt_path in alt_paths:
+            if os.path.exists(alt_path):
+                csv_path = alt_path
+                break
+        else:
+            # Last resort: search from current working directory
+            import glob
+            possible_csv = glob.glob("**/thermoelectrics.csv", recursive=True)
+            if possible_csv:
+                csv_path = possible_csv[0]
+            else:
+                raise FileNotFoundError(f"Could not find thermoelectrics.csv in any of the expected locations")
+    
+    # Verify the file is readable and has content
+    if not os.path.isfile(csv_path):
+        raise FileNotFoundError(f"Path exists but is not a file: {csv_path}")
+    
+    # Test read the first few lines to ensure it's a valid CSV
+    with open(csv_path, 'r') as f:
+        first_line = f.readline().strip()
+        if not first_line or 'Formula' not in first_line:
+            raise ValueError(f"File {csv_path} does not appear to be a valid thermoelectrics database")
+    
+    df = pd.read_csv(csv_path)
+    
+    # Verify the DataFrame has the expected columns
+    expected_columns = ['Formula', 'temperature(K)', 'seebeck_coefficient(μV/K)', 
+                       'electrical_conductivity(S/m)', 'thermal_conductivity(W/mK)', 
+                       'power_factor(W/mK2)', 'ZT']
+    
+    missing_columns = [col for col in expected_columns if col not in df.columns]
+    if missing_columns:
+        logger.warning(f"[DatabaseAgent] Missing expected columns: {missing_columns}")
+        logger.warning(f"[DatabaseAgent] Available columns: {list(df.columns)}")
+    
+    logger.info(f"[DatabaseAgent] Successfully loaded database from: {csv_path}")
+    logger.info(f"[DatabaseAgent] Database shape: {df.shape}, Columns: {list(df.columns)}")
+    
+except Exception as e:
+    logger.error(f"[DatabaseAgent] Failed to load database: {e}")
+    logger.error(f"[DatabaseAgent] Current working directory: {os.getcwd()}")
+    logger.error(f"[DatabaseAgent] Current file directory: {current_dir}")
+    # Create empty DataFrame as fallback
+    df = pd.DataFrame()
+    # Try to provide helpful error message
+    logger.error(f"[DatabaseAgent] Please ensure thermoelectrics.csv exists in the chemdx_agent/databases/ directory")
 
 name = "DatabaseAgent"
 role = "Query thermoelectric materials database"
