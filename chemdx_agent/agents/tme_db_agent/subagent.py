@@ -457,6 +457,68 @@ def get_top_performers(property_name: str = "ZT", max_results: int = 10, min_tem
     }
 
 @database_agent.tool_plain
+def find_best_temperature_for_zt(formula: str, min_temperature: float = None, max_temperature: float = None) -> Dict[str, Any]:
+    """Find the best temperature for ZT performance for a specific material.
+    
+    Args:
+        formula: (str) Chemical formula (e.g., 'Bi2Te3')
+        min_temperature: (float) Minimum temperature in K (optional)
+        max_temperature: (float) Maximum temperature in K (optional)
+    
+    Output:
+        (Dict) Best temperature, ZT value, and all temperature-ZT data points
+    """
+    # Get all data for the material
+    material_data = get_material_properties(formula)
+    
+    if not material_data.get('results'):
+        return {
+            'formula': formula,
+            'error': f'No data found for material {formula}',
+            'best_temperature': None,
+            'best_zt': None,
+            'data_points': []
+        }
+    
+    # Extract temperature-ZT pairs
+    temp_zt_data = []
+    for point in material_data['results']:
+        temp = point.get('temperature(K)')
+        zt = point.get('ZT')
+        if temp is not None and zt is not None:
+            # Apply temperature filters if specified
+            if min_temperature is not None and temp < min_temperature:
+                continue
+            if max_temperature is not None and temp > max_temperature:
+                continue
+            temp_zt_data.append({'temperature_K': temp, 'ZT': zt})
+    
+    if not temp_zt_data:
+        return {
+            'formula': formula,
+            'error': f'No valid temperature-ZT data found for {formula} in specified range',
+            'best_temperature': None,
+            'best_zt': None,
+            'data_points': []
+        }
+    
+    # Find best ZT performance
+    best_point = max(temp_zt_data, key=lambda x: x['ZT'])
+    
+    # Sort all data by ZT performance for ranking
+    sorted_data = sorted(temp_zt_data, key=lambda x: x['ZT'], reverse=True)
+    
+    return {
+        'formula': formula,
+        'best_temperature': best_point['temperature_K'],
+        'best_zt': best_point['ZT'],
+        'total_data_points': len(temp_zt_data),
+        'temperature_range': f"{min([p['temperature_K'] for p in temp_zt_data]):.0f}K - {max([p['temperature_K'] for p in temp_zt_data]):.0f}K",
+        'top_5_performances': sorted_data[:5],
+        'all_data_points': sorted_data
+    }
+
+@database_agent.tool_plain
 def get_material_summary() -> Dict[str, Any]:
     """Get a summary of the database including statistics and top performers."""
     # Basic statistics
