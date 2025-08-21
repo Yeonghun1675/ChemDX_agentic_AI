@@ -63,12 +63,12 @@ def _resolve_path(file_path: Optional[str]) -> Optional[str]:
         candidates.append(env_path)
     candidates.extend(
         [
-            "Inorganic_Phosphor_Optical_Properties_DB.csv",
-            "data/Inorganic_Phosphor.csv",
+            "chemdx_agent/databases/Inorganic_Phosphor_Optical_Properties_DB.csv",
+            "chemdx_agent/databases/Inorganic_Phosphor.csv",
             "Inorganic_Phosphor.csv",
-            "data/Inorganic_Phosphor.xlsx",
+            "chemdx_agent/databases/Inorganic_Phosphor.xlsx",
             "Inorganic_Phosphor.xlsx",
-            "data/Inorganic_Phosphor.xls",
+            "chemdx_agent/databases/Inorganic_Phosphor.xls",
             "Inorganic_Phosphor.xls",
         ]
     )
@@ -89,15 +89,15 @@ def _resolve_paths(file_path: Optional[str]) -> List[str]:
     if env_path:
         candidates.extend(_split_paths(env_path))
     candidates.extend([
-        "databases/Inorganic_Phosphor_Optical_Properties_DB.csv",
-        "databases/Inorganic_Phosphor.csv",
+        "chemdx_agent/databases/Inorganic_Phosphor_Optical_Properties_DB.csv",
+        "chemdx_agent/databases/Inorganic_Phosphor.csv",
         "Inorganic_Phosphor.csv",
-        "databases/Inorganic_Phosphor.xlsx",
+        "chemdx_agent/databases/Inorganic_Phosphor.xlsx",
         "Inorganic_Phosphor.xlsx",
-        "databases/Inorganic_Phosphor.xls",
+        "chemdx_agent/databases/Inorganic_Phosphor.xls",
         "Inorganic_Phosphor.xls",
-        "databases/estm.csv",
-        "databases/MatDX_EF.csv",
+        "chemdx_agent/databases/estm.csv",
+        "chemdx_agent/databases/MatDX_EF.csv",
     ])
     seen = set()
     uniq: List[str] = []

@@ -41,7 +41,7 @@ sample_agent = Agent(
 # =====================
 @sample_agent.tool_plain
 def process_MatDX_DB(
-    csv_path: str = "raw_database/MatDX_EF.csv",
+    csv_path: str = "databases/MatDX_EF.csv",
     out_csv: str = "MatDX_EF_Refined.csv",
     mode: str = "load",               # "load" or "refine"
     include_total: bool = False,
@@ -71,7 +71,7 @@ def process_MatDX_DB(
         Path.cwd() / user_p,
         pkg_root / user_p
     ]
-    default_pkg_csv = pkg_root / "raw_database" / "MatDX_EF.csv"
+    default_pkg_csv = pkg_root / "databases" / "MatDX_EF.csv"
     if default_pkg_csv not in candidates:
         candidates.append(default_pkg_csv)
 
