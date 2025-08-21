@@ -45,7 +45,7 @@ async def run_main_agent(message: str, deps=Optional[AgentState]):
 
     deps.main_task = message
 
-    logger.info(f"[Question] {message}")
+    logger.info(f"[Question] {message}ㅤ")
     result = await main_agent.run(
         message,
         deps=deps,
@@ -56,6 +56,6 @@ async def run_main_agent(message: str, deps=Optional[AgentState]):
     for log in list_tool_log:
         logger.info(log)
 
-    logger.info(f"[Final Answer] {output.final_answer}")
-    logger.info(f"[Evaluation] {output.evaluation}")
+    logger.info(f"[Final Answer] {output.final_answer}ㅤ")
+    logger.info(f"[Evaluation] {output.evaluation}ㅤ")
     return output
