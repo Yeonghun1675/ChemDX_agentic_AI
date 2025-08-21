@@ -96,7 +96,13 @@ def _display_line(line, displayed_lines):
         is_gen_images = re.findall(r"'.+\.png'", message)
         if is_gen_images:
             for image_path in is_gen_images:
-                st.image(image_path)
+                # 따옴표 제거
+                clean_path = image_path.strip("'")
+                if os.path.exists(clean_path):
+                    try:
+                        st.image(clean_path)
+                    except Exception as e:
+                        st.error(f"이미지 로드 실패: {clean_path}")
 
         return True
     except Exception as e:
