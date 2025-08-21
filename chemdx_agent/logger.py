@@ -1,4 +1,5 @@
 import logging
+import os
 
 
 def get_logger(name, stream=True, file=False):
@@ -11,12 +12,15 @@ def get_logger(name, stream=True, file=False):
         logger.addHandler(handler)
 
     if file:
-        handler = logging.FileHandler(f"{name}.log")
-        handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
+        file_name = f"log.txt"
+        if os.path.exists(file_name):
+            os.remove(file_name)
+        handler = logging.FileHandler(file_name)
+        # handler.setFormatter(logging.Formatter('%(asctime)s | %(message)s'))
+        handler.setFormatter(logging.Formatter('%(message)s'))
         logger.addHandler(handler)
 
     return logger
 
 
-logger = get_logger(__name__, stream=True, file=False)
-error_logger = get_logger('error', stream=False, file=True)
+logger = get_logger(__name__, stream=True, file=True)
