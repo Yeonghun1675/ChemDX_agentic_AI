@@ -39,7 +39,7 @@ context = (
     "Given a dataset (already loaded/refined by another agent) with chemical formulas (formula) and a target property, "
     "automatically generate composition features (matminer, Magpie preset), split train/val/test (0.80/0.05/0.15), "
     "train LightGBM, Random Forest, Decision Tree, save artifacts, compare, and show only the best model's scatter. "
-    "If there is no refined database, call the MatDX_Agent."
+    "If there is no refined database, call the MatDXAgent."
 )
 system_prompt = f"You are the {name}. Your role: {role}. Context: {context}"
 
@@ -203,7 +203,7 @@ def _fit_one_model(
     }
 
 # =====================
-# Tool B) 3-model compare
+# Tool B) 3-model compare + scatter
 # =====================
 @sample_agent.tool_plain
 def construct_and_compare_models_MatDX(
@@ -245,6 +245,7 @@ def construct_and_compare_models_MatDX(
     q1, q3 = np.percentile(y_raw, [25, 75]); iqr = q3 - q1
     lo, hi = q1 - iqr_k * iqr, q3 + iqr_k * iqr
     mask = (y_raw >= lo) & (y_raw <= hi)
+    removed = int((~mask).sum()); kept = int(mask.sum())
     df = df.loc[mask].reset_index(drop=True)
 
     # Features
@@ -280,43 +281,56 @@ def construct_and_compare_models_MatDX(
     model_order = ["lgbm", "rf", "dt"] if LGBMRegressor is not None else ["rf", "dt"]
 
     rows_compare = []
+    per_model_summaries = []
+
     for mt in model_order:
         r = _fit_one_model(mt, X_tr_i, y_tr, X_val_i, y_val, X_te_i,
                            specs[mt]["lgbm_params"], specs[mt]["rf_params"], specs[mt]["dt_params"], random_state)
         m_val = r["val_metrics"]
         m_te  = _metrics(y_te, r["test_pred"])
 
+        # scatter 저장
         scat_path = _in_outdir(f"{mt}_scatter.png")
-        _save_scatter(y_te, r["test_pred"], scat_path, f"{mt.upper()} (Test 15%)")
+        _save_scatter(y_te, r["test_pred"], scat_path, f"{mt.upper()} (Magpie) • Test (15%)")
 
         rows_compare.append({
             "model": mt, "val_RMSE": m_val["RMSE"], "test_RMSE": m_te["RMSE"], "test_R2": m_te["R2"],
             "scatter": scat_path
         })
+        per_model_summaries.append(
+            f"- {mt.upper()} → Val RMSE={m_val['RMSE']:.4f}, Test RMSE={m_te['RMSE']:.4f} (scatter: {scat_path})"
+        )
 
+    # best 선택
     best_row = min(rows_compare, key=lambda d: d["test_RMSE"])
-    return f"[BEST] {best_row}"
+
+    summary_lines = [
+        f"[CSV] {resolved}",
+        f"[ROWS] kept={kept}, removed_outliers={removed} (IQR_k={iqr_k})",
+        "[SPLIT] train=0.80, val=0.05, test=0.15",
+        "[PER-MODEL]",
+        *per_model_summaries,
+        "",
+        f"[BEST] {best_row['model'].upper()} — Test RMSE={best_row['test_RMSE']:.6f}, R²={best_row['test_R2']:.6f}",
+        f"        scatter: {best_row['scatter']}",
+    ]
+
+    best_path = _in_outdir(best_summary_txt)
+    _ensure_parent_dir(best_path)
+    with open(best_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(summary_lines))
+
+    # ✅ Best 모델 scatter만 inline 출력
+    if show_best_plot:
+        from IPython.display import display, Image as IPyImage
+        display(IPyImage(filename=_abs(best_row["scatter"])))
+
+    return "\n".join(summary_lines)
 
 # =====================
 # Agent caller (MatDXAgent 라우팅 반영)
 # =====================
 async def call_ML_agent(ctx: RunContext[AgentState], message2agent: str):
-    
-    f"""
-    this agent can:
-    - build and evaluate a composition-based regressor on a **refined** CSV (MatDX_EF_Refined.csv).
-    - If there is no refined database, call the MatDX_Agent.
-    - generate Magpie composition features, split 80/20, train (LightGBM/RF/DT).
-    - report RMSE/MAE/R² and save a y_true vs y_pred scatter, predictions CSV, and top feature importances CSV.
-    - compare the three model and recommend the best model
-    - plot the performance metrics (Scatter plot, R2, MAE, RMSE)
-    - never load the raw DB directly (expects the refined CSV from MatDX_agent).
-
-    in this case, use this subagent:
-    - If the user wants information about the MatDX DB (columns, shape, previews, FE stats), use **MatDXAgent** in 'load' mode to read and report.
-    - If the user needs to prepare data for ML — or if the refined CSV doesn't exist — use **MatDXAgent** in 'refine' mode to create `MatDX_EF_Refined.csv`, report the saved path, and then re-run this **MLAgent**.
-    """
-
     agent_name = name
     deps = ctx.deps
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
