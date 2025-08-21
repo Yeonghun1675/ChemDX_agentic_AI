@@ -1,4 +1,18 @@
+import re
 from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+
+
+def split_line_to_agent_and_message(line: str):
+    if line.startswith("[Question]"):
+        return "MainAgent", "Question", line.replace("[Question]", "").strip()
+    elif line.startswith("[Final Answer]"):
+        return "MainAgent", "Final Answer", line.replace("[Final Answer]", "").strip() 
+    elif line.startswith("[Evaluation]"):
+        return "MainAgent", "Evaluation", line.replace("[Evaluation]", "").strip()
+    else:
+        agent, message_type, message = re.match(r"^\[(.+?)\](.+?):(.+)", line).groups()
+
+        return agent.strip(), message_type.strip(), message.strip()
 
 
 def make_tool_message(result):
