@@ -138,35 +138,18 @@ async def monitor_log_file(log_file_path, placeholder):
                 # Combine temp buffer with new content
                 content_to_process = temp_buffer + new_content
                 
-                # Split by lines and process
-                lines = content_to_process.split('\n')
+                # Split by end token (투명문자 ㅤ)
+                complete_messages = content_to_process.split('ㅤ')
                 
-                # Process all lines except the last one (which might be incomplete)
-                for line in lines[:-1]:
-                    if line.strip():
-                        # Check if line ends with end token (투명문자 ㅤ)
-                        if line.endswith('ㅤ'):
-                            # Complete line, add to accumulated_lines
-                            if line not in accumulated_lines:
-                                accumulated_lines.append(line)
-                        else:
-                            # Incomplete line, add to temp buffer
-                            temp_buffer = line
+                # Process all complete messages except the last one (which might be incomplete)
+                for message in complete_messages[:-1]:
+                    if message.strip():
+                        # Complete message, add to accumulated_lines
+                        if message not in accumulated_lines:
+                            accumulated_lines.append(message.strip())
                 
-                # Handle the last line (might be incomplete)
-                last_line = lines[-1]
-                if last_line.strip():
-                    if last_line.endswith('ㅤ'):
-                        # Complete line, add to accumulated_lines
-                        if last_line not in accumulated_lines:
-                            accumulated_lines.append(last_line)
-                        temp_buffer = ""  # Clear temp buffer
-                    else:
-                        # Incomplete line, keep in temp buffer
-                        temp_buffer = last_line
-                else:
-                    # Empty line, clear temp buffer
-                    temp_buffer = ""
+                # The last part is always incomplete, put it in temp buffer
+                temp_buffer = complete_messages[-1]
                 
                 # Display only new complete lines
                 for line in accumulated_lines:
