@@ -27,7 +27,7 @@ agent_color = {
     'MLAgent': '#83C5BE',
     "DftPoscarAgent": "#f5d6eb",   
     "MaterialsProjectAgent": "#d8c8f0", 
-    "DatabaseAgent": "#c6e8f7",  
+    "ThermoelectricDatabaseAgent": "#c6e8f7",  
     "VisualisationAgent": "#f5d6eb", 
 }
 
@@ -48,7 +48,7 @@ agent_emoji = {
     'MLAgent': '❔',
     'DftPoscarAgent': '🔧',
     'MaterialsProjectAgent': '🔎',
-    'DatabaseAgent': '📊',
+    'ThermoelectricDatabaseAgent': '📊',
     'VisualisationAgent': '📊',
 }
 

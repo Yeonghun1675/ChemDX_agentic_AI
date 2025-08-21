@@ -73,7 +73,7 @@ except Exception as e:
     # Try to provide helpful error message
     logger.error(f"[DatabaseAgent] Please ensure thermoelectrics.csv exists in the chemdx_agent/databases/ directory")
 
-name = "DatabaseAgent"
+name = "ThermoelectricDatabaseAgent"
 role = "Query thermoelectric materials database"
 context = """You are connected to a thermoelectric materials database with 5,205+ materials. You can search for material properties, return results at specific temperatures, and compare entries. You have access to data on 
 Formula	temperature(K), seebeck_coefficient(μV/K),	electrical_conductivity(S/m),	thermal_conductivity(W/mK),	power_factor(W/mK2),	ZT	and reference study. 
@@ -92,7 +92,7 @@ working_memory_prompt = """Main Goal: {main_goal}
 Working Memory: {working_memory}
 """
 
-database_agent = Agent(
+thermoelectric_database_agent = Agent(
     model="openai:gpt-4o",
     output_type=Result,
     deps_type=AgentState,
@@ -103,7 +103,7 @@ database_agent = Agent(
     system_prompt=system_prompt,
 )
 
-@database_agent.system_prompt(dynamic=True)
+@thermoelectric_database_agent.system_prompt(dynamic=True)
 def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
     deps = ctx.deps
     return working_memory_prompt.format(
@@ -115,12 +115,12 @@ def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
 
 #Tools
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def read_database_schema() -> List[str]:
     """Return the list of available columns in the thermoelectric database."""
     return df.columns.tolist()
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def find_material_variants(material_hint: str) -> List[str]:
     """Find all material formulas in the database that contain the given hint (e.g. element symbol or name).
     Args:
@@ -133,7 +133,7 @@ def find_material_variants(material_hint: str) -> List[str]:
     return unique_formulas
 
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def get_material_properties(formula: str) -> Dict[str, Any]:
     """Return all temperature-dependent property data for an exact formula.
 
@@ -166,7 +166,7 @@ def get_material_properties(formula: str) -> Dict[str, Any]:
 
 
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def smart_material_search(query: str, max_results: int = 10) -> Dict[str, Any]:
     """Smart search for materials with intelligent ranking and filtering.
     Args:
@@ -340,7 +340,7 @@ def calculate_composition_relevance(formula: str, element: str) -> float:
     
     return 0.0
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def search_major_component_materials(element: str, min_composition: float = 0.2, max_results: int = 15) -> Dict[str, Any]:
     """Search for materials where the specified element is a major component.
     
@@ -432,7 +432,7 @@ def search_major_component_materials(element: str, min_composition: float = 0.2,
         'results': results
     }
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def get_top_performers(property_name: str = "ZT", max_results: int = 10, min_temperature: float = None, max_temperature: float = None) -> Dict[str, Any]:
     """Get top performing materials by specific property with optional temperature filtering.
     Args:
@@ -516,7 +516,7 @@ def get_top_performers(property_name: str = "ZT", max_results: int = 10, min_tem
         'results': top_results
     }
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def find_best_temperature_for_zt(formula: str, min_temperature: float = None, max_temperature: float = None) -> Dict[str, Any]:
     """Find the best temperature for ZT performance for a specific material.
     
@@ -578,7 +578,7 @@ def find_best_temperature_for_zt(formula: str, min_temperature: float = None, ma
         'all_data_points': sorted_data
     }
 
-@database_agent.tool_plain
+@thermoelectric_database_agent.tool_plain
 def get_material_summary() -> Dict[str, Any]:
     """Get a summary of the database including statistics and top performers."""
     # Basic statistics
@@ -617,21 +617,21 @@ def get_material_summary() -> Dict[str, Any]:
 
 #----------
 
-async def call_database_agent(ctx: RunContext[AgentState], message2agent: str):
+async def call_thermoelectric_database_agent(ctx: RunContext[AgentState], message2agent: str):
     """Call general agent to execute the task: {role}
 
     args:
         message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
 
     This agent can look up the thermoelectric materials database to execute a query on thermoelectric materials DB such as their temperatrue,ZT, and other properties."""
-    agent_name = "DatabaseAgent"
+    agent_name = "ThermoelectricDatabaseAgent"
     deps = ctx.deps
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}ㅤ")
 
     user_prompt = f"Current Task of your role: {message2agent}"
 
-    result = await database_agent.run(user_prompt, deps=deps)
+    result = await thermoelectric_database_agent.run(user_prompt, deps=deps)
 
     output = result.output
     deps.add_working_memory(agent_name, message2agent)

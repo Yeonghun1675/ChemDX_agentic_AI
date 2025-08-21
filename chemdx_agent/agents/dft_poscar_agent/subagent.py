@@ -656,7 +656,7 @@ async def generate_poscar_for_thermoelectric(
     try:
         # Step 1: Import and call Database agent to get top thermoelectric materials
         try:
-            from chemdx_agent.agents.tme_db_agent.subagent import database_agent
+            from chemdx_agent.agents.tme_db_agent.subagent import call_thermoelectric_database_agent
         except ImportError as e:
             return PoscarResult(
                 ok=False, 
@@ -666,7 +666,7 @@ async def generate_poscar_for_thermoelectric(
 
         # Query database for top performers at specified temperature
         db_query = f"Get top {max_results} materials by {property_name} with minimum temperature {temperature_min}K"
-        db_result = await database_agent.run(db_query, deps=ctx.deps, usage=ctx.usage)
+        db_result = await call_thermoelectric_database_agent(ctx, db_query)
         
         if not hasattr(db_result, 'output') or not db_result.output:
             return PoscarResult(
