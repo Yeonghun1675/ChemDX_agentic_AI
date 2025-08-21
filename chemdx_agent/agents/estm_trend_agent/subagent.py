@@ -76,7 +76,7 @@ def _get_numeric(val) -> Optional[float]:
 @estm_agent.tool_plain
 def load_estm_db(file_path: Optional[str] = None) -> str:
     global _df_cache, _path_cache
-    path = file_path or "estm.csv"
+    path = file_path or "databases/estm.csv"
     if not os.path.exists(path):
         return f"Error: Not found: '{path}'"
     try:
