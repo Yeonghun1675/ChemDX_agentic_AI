@@ -81,16 +81,26 @@ def _resolve_csv(csv_path: str | None) -> str:
     if csv_path:
         p = Path(csv_path).expanduser()
         candidates.append(p if p.is_absolute() else Path.cwd() / p)
-    candidates.append(Path.cwd() / "raw_database" / "MatDX_EF_Refined.csv")
+    candidates.append(Path.cwd() / "databases" / "MatDX_EF_Refined.csv")
     candidates.append(Path.cwd() / "MatDX_EF_Refined.csv")
     pkg_root = Path(inspect.getfile(chemdx_agent)).resolve().parent
-    candidates.append(pkg_root / "raw_database" / "MatDX_EF_Refined.csv")
+    candidates.append(pkg_root / "databases" / "MatDX_EF_Refined.csv")
     tried = []
     for c in candidates:
         tried.append(str(c))
         if c.exists():
             return str(c.resolve())
     raise FileNotFoundError("\n".join(tried))
+
+# =====================
+# Unified output base dir
+# =====================
+BASE_OUT_DIR = _abs("ML_OUTPUTS")
+os.makedirs(BASE_OUT_DIR, exist_ok=True)
+
+def _in_outdir(filename: str) -> str:
+    """Return absolute path inside ML_OUTPUTS folder."""
+    return os.path.join(BASE_OUT_DIR, filename)
 
 # =====================
 # Featurizer
@@ -144,8 +154,10 @@ def analyze_and_clean_outliers(
     df_clean = df.loc[mask].reset_index(drop=True)
     df_out   = df.loc[~mask].reset_index(drop=True)
 
-    clean_abs = _abs(out_clean_csv); _ensure_parent_dir(clean_abs); df_clean.to_csv(clean_abs, index=False)
-    out_abs   = _abs(out_outliers_csv); _ensure_parent_dir(out_abs); df_out.to_csv(out_abs, index=False)
+    clean_abs = _in_outdir(out_clean_csv)
+    out_abs   = _in_outdir(out_outliers_csv)
+    _ensure_parent_dir(clean_abs); df_clean.to_csv(clean_abs, index=False)
+    _ensure_parent_dir(out_abs);   df_out.to_csv(out_abs, index=False)
 
     lines = [
         f"[CSV] {resolved}",
@@ -268,7 +280,7 @@ def construct_and_compare_models_MatDX(
     dt_max_depth: Optional[int] = None,
     dt_min_samples_split: int = 2,
     dt_min_samples_leaf: int = 1,
-    # outputs
+    # outputs (kept for API compatibility; ignored for path root)
     out_dir: str = ".",
     compare_csv: str = "model_comparison.csv",
     best_summary_txt: str = "best_model_summary.txt",
@@ -285,6 +297,7 @@ def construct_and_compare_models_MatDX(
         if col not in df.columns:
             return f"[ERROR] Missing '{col}' in CSV: {resolved}"
 
+    # Outlier removal (IQR)
     y_raw = df[target_col].astype(float)
     q1, q3 = np.percentile(y_raw, [25, 75]); iqr = q3 - q1
     lo, hi = q1 - iqr_k * iqr, q3 + iqr_k * iqr
@@ -292,19 +305,22 @@ def construct_and_compare_models_MatDX(
     removed = int((~mask).sum()); kept = int(mask.sum())
     df = df.loc[mask].reset_index(drop=True)
 
+    # Features
     X_form = df[formula_col].astype(str).values
     y = df[target_col].astype(float).values
     feat = MagpieFeaturizer(preset="magpie", ignore_errors=True)
     X_all = feat.transform(X_form)
 
+    # Split + impute
     X_tr, y_tr, X_val, y_val, X_te, y_te = _split_80_05_15(X_all, y, seed=random_state)
     imputer = SimpleImputer(strategy="median")
     X_tr_i = imputer.fit_transform(X_tr)
     X_val_i = imputer.transform(X_val)
     X_te_i  = imputer.transform(X_te)
 
-    out_dir_abs = _abs(out_dir)
-    os.makedirs(out_dir_abs, exist_ok=True)  # 최상위 out_dir 보장
+    # Output paths (force ML_OUTPUTS root)
+    out_dir_abs = BASE_OUT_DIR
+    os.makedirs(out_dir_abs, exist_ok=True)
     feat_labels = ElementProperty.from_preset("magpie").feature_labels()
 
     specs = {
@@ -336,7 +352,7 @@ def construct_and_compare_models_MatDX(
         m_te  = _metrics(y_te, r["test_pred"])
 
         # predictions CSV
-        pred_path = _abs(os.path.join(out_dir_abs, f"{mt}_model_predictions.csv"))
+        pred_path = _in_outdir(f"{mt}_model_predictions.csv")
         _ensure_parent_dir(pred_path)
         pd.DataFrame({
             "split": ["val"]*len(y_val) + ["test"]*len(y_te),
@@ -345,7 +361,7 @@ def construct_and_compare_models_MatDX(
         }).to_csv(pred_path, index=False)
 
         # scatter
-        scat_path = _abs(os.path.join(out_dir_abs, f"{mt}_model_scatter.png"))
+        scat_path = _in_outdir(f"{mt}_model_scatter.png")
         _save_scatter(y_te, r["test_pred"], scat_path, f"{mt.upper()} (Magpie) • Test (15%)")
 
         # importances
@@ -356,7 +372,7 @@ def construct_and_compare_models_MatDX(
             topk = min(50, len(importances))
             top_rows = [{"rank": i+1, "feature": feat_labels[idx], "importance": float(importances[idx])}
                         for i, idx in enumerate(order[:topk])]
-            imp_path = _abs(os.path.join(out_dir_abs, f"{mt}_model_feature_importances_top.csv"))
+            imp_path = _in_outdir(f"{mt}_model_feature_importances_top.csv")
             _ensure_parent_dir(imp_path)
             pd.DataFrame(top_rows).to_csv(imp_path, index=False)
 
@@ -369,7 +385,7 @@ def construct_and_compare_models_MatDX(
         per_model_summaries.append(f"- {mt.upper()} → Val RMSE={m_val['RMSE']:.4f}, Test RMSE={m_te['RMSE']:.4f}  (scatter: {scat_path})")
 
     # comparison CSV
-    cmp_path = _abs(os.path.join(out_dir_abs, compare_csv))
+    cmp_path = _in_outdir(compare_csv)
     _ensure_parent_dir(cmp_path)
     pd.DataFrame(rows_compare).to_csv(cmp_path, index=False)
 
@@ -388,7 +404,7 @@ def construct_and_compare_models_MatDX(
         (f"       import : {best_row['importance_path']}" if best_row['importance_path'] else "       import : (n/a)"),
         f"[COMPARISON CSV] {cmp_path}",
     ]
-    best_path = _abs(os.path.join(out_dir_abs, best_summary_txt))
+    best_path = _in_outdir(best_summary_txt)
     _ensure_parent_dir(best_path)
     with open(best_path, "w", encoding="utf-8") as f:
         f.write("\n".join(best_txt))
