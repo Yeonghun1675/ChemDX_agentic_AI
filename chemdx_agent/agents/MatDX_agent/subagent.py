@@ -12,7 +12,7 @@ from chemdx_agent.utils import make_tool_message
 name = "MatDXAgent"
 role = "Load MatDX database (MatDX_EF.csv) and refine the DB"
 context = (
-    "The agent should be able to read a CSV file using pandas and refine it for Machine Learning Model Construction. "
+    "The agent should be able to read a MatDX_EF.CSV (MatDX, formation energy file) file using pandas and refine it for Machine Learning Model Construction. "
     "When loading or refining, the agent must also output a detailed summary including: "
     "- RAW preview (first few rows), "
     "- SUMMARY (shape, columns, sample rows), "
@@ -196,7 +196,7 @@ def process_MatDX_DB(
 async def call_MatDX_agent(ctx: RunContext[AgentState], message2agent: str):
     f"""
     this agent can:
-    - load MatDX_EF.csv and print RAW / SUMMARY / FORMATION ENERGY SUMMARY.
+    - load  MatDX_EF.csv (MatDX, formation energy file) and print RAW / SUMMARY / FORMATION ENERGY SUMMARY.
     - refine the DB and save MatDX_EF_Refined.csv with [formula, space_group, formation_energy_per_atom(, formation_energy_total)].
     - handle basic path resolution (CWD / package defaults).
 
