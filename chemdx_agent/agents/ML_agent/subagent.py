@@ -39,6 +39,7 @@ context = (
     "Given a dataset (already loaded/refined by another agent) with chemical formulas (formula) and a target property, "
     "automatically generate composition features (matminer, Magpie preset), split train/val/test (0.80/0.05/0.15), "
     "train LightGBM, Random Forest, Decision Tree, save artifacts, compare, and show only the best model's scatter."
+    "If there are not exist the refined database call the MatAgent"
 )
 system_prompt = f"You are the {name}. Your role: {role}. Context: {context}"
 
@@ -418,6 +419,20 @@ def construct_and_compare_models_MatDX(
 # Agent caller
 # =====================
 async def call_ML_agent(ctx: RunContext[AgentState], message2agent: str):
+
+    f"""
+    this agent can:
+    - build and evaluate a composition-based regressor on a **refined** CSV (MatDX_EF_Refined.csv).
+    - generate Magpie composition features, split 80/20, train (LightGBM/RF/DT).
+    - report RMSE/MAE/R² and save a y_true vs y_pred scatter, predictions CSV, and top feature importances CSV.
+    - compare the three model and recommend the best model
+    - plot the performance metrics (Scatter plot, R2, MAE, RMSE)
+    - never load the raw DB directly (expects the refined CSV from MatDX_agent).
+
+    in this case, use this subagent:
+    - If the user wants information about the MatDX DB (columns, shape, previews, FE stats), use **MatDXAgent** in 'load' mode to read and report.
+    - If the user needs to prepare data for ML — or if the refined CSV doesn't exist — use **MatDXAgent** in 'refine' mode to create `MatDX_EF_Refined.csv`, report the saved path, and then re-run this **MLAgent**.
+    """
     agent_name = name
     deps = ctx.deps
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}ㅤ")
