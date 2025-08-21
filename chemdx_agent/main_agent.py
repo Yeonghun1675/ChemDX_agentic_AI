@@ -36,6 +36,7 @@ async def run_main_agent(message: str):
     logger.info(f"[Question] {message}")
     result = await main_agent.run(
         message,
+        deps=AgentState(main_task=message),
         usage_limits=UsageLimits(
             request_limit=None,
             input_tokens_limit=None,

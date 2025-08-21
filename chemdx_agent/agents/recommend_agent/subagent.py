@@ -483,26 +483,178 @@ async def call_recommend_agent(ctx: RunContext[AgentState], message2agent: str):
         - load_phosphor_db: Load CSV/Excel database from path or auto-resolve from env var PHOSPHOR_DB_PATH
         - recommend_by_color: Recommend materials based on specific color (hex or name) with long decay times
         - recommend_by_color_range: Recommend materials for color ranges (e.g., 'warm white', 'cool blue')
+        - recommend_by_emission_decay_qe: Recommend materials filtered by Emission max (nm) range, maximum Decay time (ns), and minimum Quantum Efficiency (%)
         
         Example messages:
         - "Load the phosphor database from './data/Inorganic_Phosphor.csv'"
         - "Recommend 5 materials with decay time >= 10ms for color #FF0000 (red)"
         - "Find materials with decay >= 5ms for warm white color range"
         - "Recommend 3 phosphors for blue color with minimum 2ms decay time"
+        - "Recommend blue phosphors with Emission max in [360, 420] nm, Decay time <= 100 ns, and QE >= 80%"
     """
 
     agent_name = "RecommendAgent"
-    deps = ctx.deps
+    deps = ctx.deps or AgentState()
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await recommend_agent.run(message2agent, deps=deps)
     output = result.output
-    
-    # Removed working_memory/increment_step since not guaranteed in deps
-    # deps.add_working_memory(agent_name, message2agent)
-    # deps.increment_step()
-
+    if hasattr(deps, "add_working_memory"):
+        deps.add_working_memory(agent_name, message2agent)
+    if hasattr(deps, "increment_step"):
+        deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     
     return output
+
+
+@recommend_agent.tool_plain
+def recommend_by_emission_decay_qe(
+    emission_min_nm: float,
+    emission_max_nm: float,
+    decay_max_ns: float,
+    qe_min_percent: float = 0.0,
+    top_k: int = 10,
+    file_path: Optional[str] = None,
+) -> str:
+    """Recommend phosphor materials using Emission max (nm), Decay time (ns), and Quantum Efficiency (%) filters.
+
+    args:
+        emission_min_nm: (float) Minimum Emission max in nm (inclusive)
+        emission_max_nm: (float) Maximum Emission max in nm (inclusive)
+        decay_max_ns: (float) Maximum Decay time in ns (inclusive)
+        qe_min_percent: (float) Minimum Quantum Efficiency in % (consider Int. or Ext.), default 0
+        top_k: (int) Number of recommendations to return (default 10)
+        file_path: (Optional[str]) Database path
+
+    output:
+        (str) Ranked list with host, dopant, concentration, Emission max (nm), Decay time (ns), and QE (%)
+    """
+    global _df_cache
+
+    if _df_cache is None or (file_path and file_path != _path_cache):
+        status = load_phosphor_db(file_path)
+        if status.startswith("Error"):
+            return status
+
+    if _df_cache is None:
+        return "Error: Database not loaded"
+
+    columns = list(_df_cache.columns)
+
+    # Column resolution
+    emission_col = _find_col(columns, [
+        "Emission max. (nm)", "Emission max (nm)", "Emission max", "emission_max", "emission (nm)", "emission"
+    ])
+    decay_col = _find_col(columns, [
+        "Decay time (ns)", "decay", "lifetime", "tau", "decay_time"
+    ])
+    iqe_col = _find_col(columns, [
+        "Int. quantum efficiency (%)", "Internal quantum efficiency", "IQE", "int qe", "internal qe"
+    ])
+    eqe_col = _find_col(columns, [
+        "Ext. quantum efficiency (%)", "External quantum efficiency", "EQE", "ext qe", "external qe"
+    ])
+    host_col = _find_col(columns, [
+        "Host", "host"
+    ])
+    dopant1_col = _find_col(columns, [
+        "1st dopant", "dopant", "activator", "1st activator"
+    ])
+    dopant1_conc_col = _find_col(columns, [
+        "1st doping concentration", "dopant concentration", "activator concentration", "1st dopant concentration"
+    ])
+    formula_col = _find_col(columns, [
+        "Inorganic phosphor", "formula", "compound", "name", "chemical", "material", "composition"
+    ])
+
+    debug_cols = (
+        f"emission={emission_col}, decay={decay_col}, IQE={iqe_col}, EQE={eqe_col}, "
+        f"host={host_col}, dopant={dopant1_col}, conc={dopant1_conc_col}, formula={formula_col}"
+    )
+
+    if not emission_col:
+        return f"Error: Emission max column not found. Columns: {debug_cols}"
+    if not decay_col:
+        return f"Error: Decay time (ns) column not found. Columns: {debug_cols}"
+
+    results: List[dict] = []
+
+    for _, row in _df_cache.iterrows():
+        emission_nm = _get_numeric(row, emission_col)
+        decay_ns = _get_numeric(row, decay_col)
+        iqe_val = _get_numeric(row, iqe_col) if iqe_col else None
+        eqe_val = _get_numeric(row, eqe_col) if eqe_col else None
+
+        if emission_nm is None or decay_ns is None:
+            continue
+
+        # Apply numeric filters
+        if not (emission_min_nm <= emission_nm <= emission_max_nm):
+            continue
+        if not (decay_ns <= decay_max_ns):
+            continue
+
+        # QE filter (accept if either IQE or EQE meets threshold)
+        if qe_min_percent > 0:
+            has_qe = False
+            if iqe_val is not None and iqe_val >= qe_min_percent:
+                has_qe = True
+            if eqe_val is not None and eqe_val >= qe_min_percent:
+                has_qe = True
+            if not has_qe:
+                continue
+
+        result_qe_val: Optional[float] = None
+        result_qe_label = ""
+        if iqe_val is not None and (eqe_val is None or iqe_val >= (eqe_val or -1)):
+            result_qe_val = iqe_val
+            result_qe_label = "IQE"
+        elif eqe_val is not None:
+            result_qe_val = eqe_val
+            result_qe_label = "EQE"
+
+        results.append({
+            "host": str(row[host_col]) if host_col and host_col in row else "N/A",
+            "dopant": str(row[dopant1_col]) if dopant1_col and dopant1_col in row else "N/A",
+            "conc": _fmt_float(_get_numeric(row, dopant1_conc_col), 3) if dopant1_conc_col else "N/A",
+            "emission_nm": emission_nm,
+            "decay_ns": decay_ns,
+            "qe_val": result_qe_val,
+            "qe_label": result_qe_label,
+            "formula": str(row[formula_col]) if formula_col and formula_col in row else ""
+        })
+
+    if not results:
+        return (
+            "No materials found for the specified filters.\n" 
+            f"Filters: Emission in [{emission_min_nm}, {emission_max_nm}] nm; "
+            f"Decay <= {decay_max_ns} ns; QE >= {qe_min_percent}%\n"
+            f"Resolved columns: {debug_cols}"
+        )
+
+    # Sort by QE (desc, preferring entries with QE), then by shorter decay
+    def sort_key(item: dict):
+        qe_score = item["qe_val"] if item["qe_val"] is not None else -1
+        return (-qe_score, item["decay_ns"])
+
+    results.sort(key=sort_key)
+
+    lines: List[str] = [
+        (
+            f"Recommendations (Emission {emission_min_nm}-{emission_max_nm} nm, "
+            f"Decay <= {decay_max_ns} ns, QE >= {qe_min_percent}%):"
+        )
+    ]
+
+    for i, rec in enumerate(results[:top_k], 1):
+        qe_str = f"{rec['qe_label']}={_fmt_float(rec['qe_val'], 1)}%" if rec["qe_val"] is not None else "QE=N/A"
+        host_str = rec["host"] if rec["host"] and rec["host"] != "nan" else "N/A"
+        dopant_str = rec["dopant"] if rec["dopant"] and rec["dopant"] != "nan" else "N/A"
+        lines.append(
+            f"{i}. Host: {host_str} | Dopant: {dopant_str} | Conc: {rec['conc']} | "
+            f"Emission: {_fmt_float(rec['emission_nm'], 1)} nm | Decay: {_fmt_float(rec['decay_ns'], 1)} ns | {qe_str}"
+        )
+
+    return "\n".join(lines)

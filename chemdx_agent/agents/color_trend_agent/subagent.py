@@ -15,6 +15,10 @@ context = (
     "and summarize color/emission trends. DB path can be provided or auto-resolved."
 )
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 system_prompt = f"""You are the {name}. {role}. {context}
 
 Guidelines:
@@ -392,21 +396,20 @@ async def call_color_trend_agent(ctx: RunContext[AgentState], message2agent: str
     f"""[Scope] Use ONLY for host+dopant specific color/emission change vs dopant ratio.
 
     The agent can:
-    - load_phosphor_db(file_path?): Load the DB
-    - trend_by_ratio(host, dopant, file_path?): Summarize color/emission vs ratio for a given host and activator
+    - load_phosphor_db(Inorganic_Phosphor_Optical_Properties_DB.csv): Load the DB
+    - trend_by_ratio(host, dopant): Summarize color/emission vs ratio for a given host and activator
 
-    Example messages:
-    - "For host 'Ba2V3O11' doped with 'Eu', how does color change with ratio?"
-    - "I'm going to dope element Tb on Sr8ZnScP7O28; show color change by ratio."
-
-    Do NOT use this agent for generic cross-dataset feature–feature trends (e.g.,
-    "emission max vs color across the DB"). For generic X–Y trends, use TrendAgent instead.
+    Do NOT use this agent for generic cross-dataset feature–feature trends.
     """
     agent_name = name
-    deps = ctx.deps
+    deps = ctx.deps or AgentState()
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await color_trend_agent.run(message2agent, deps=deps)
     output = result.output
+    if hasattr(deps, "add_working_memory"):
+        deps.add_working_memory(agent_name, message2agent)
+    if hasattr(deps, "increment_step"):
+        deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     return output

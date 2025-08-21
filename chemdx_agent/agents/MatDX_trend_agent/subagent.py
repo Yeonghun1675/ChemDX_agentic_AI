@@ -13,6 +13,9 @@ name = "MatDXTrendAgent"
 role = "Analyze trends (X vs Y) in MatDX_EF.csv (materials/formation-energy etc.)"
 context = "Columns include: formula, space_group, structure, id, formation_energy"
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
 
 system_prompt = f"""You are the {name}. {role}.
 
@@ -135,6 +138,8 @@ async def call_matdx_trend_agent(ctx: RunContext[AgentState], message2agent: str
     logger.info(f"[MatDXTrendAgent] Message2Agent: {message2agent}")
     result = await matdx_agent.run(message2agent, deps=deps)
     output = result.output
+    deps.add_working_memory(name, message2agent)
+    deps.increment_step()
     logger.info(f"[MatDXTrendAgent] Action: {output.action}")
     logger.info(f"[MatDXTrendAgent] Result: {output.result}")
     return output

@@ -13,6 +13,9 @@ name = "ESTMTrendAgent"
 role = "Analyze trends (X vs Y) in thermoelectric dataset 'estm.csv'"
 context = "Columns include: Formula, temperature(K), seebeck_coefficient(μV/K), electrical_conductivity(S/m), thermal_conductivity(W/mK), power_factor(W/mK2), ZT, reference"
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
 
 system_prompt = f"""You are the {name}. {role}.
 
@@ -135,6 +138,8 @@ async def call_estm_trend_agent(ctx: RunContext[AgentState], message2agent: str)
     logger.info(f"[ESTMTrendAgent] Message2Agent: {message2agent}")
     result = await estm_agent.run(message2agent, deps=deps)
     output = result.output
+    deps.add_working_memory(name, message2agent)
+    deps.increment_step()
     logger.info(f"[ESTMTrendAgent] Action: {output.action}")
     logger.info(f"[ESTMTrendAgent] Result: {output.result}")
     return output

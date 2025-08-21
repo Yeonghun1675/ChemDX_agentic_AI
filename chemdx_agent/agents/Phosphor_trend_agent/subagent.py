@@ -30,6 +30,10 @@ phosphor_trend_agent = Agent(
     system_prompt=system_prompt,
 )
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 _df_cache: Optional[pd.DataFrame] = None
 _path_cache: Optional[str] = None
 
@@ -145,6 +149,10 @@ async def call_phosphor_trend_agent(ctx: RunContext[AgentState], message2agent: 
     logger.info(f"[PhosphorTrendAgent] Message2Agent: {message2agent}")
     result = await phosphor_trend_agent.run(message2agent, deps=deps)
     output = result.output
+    deps.add_working_memory("PhosphorTrendAgent", message2agent)
+    deps.increment_step()
+    deps.add_working_memory(name, message2agent)
+    deps.increment_step()
     logger.info(f"[PhosphorTrendAgent] Action: {output.action}")
     logger.info(f"[PhosphorTrendAgent] Result: {output.result}")
     return output

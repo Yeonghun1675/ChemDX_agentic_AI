@@ -6,7 +6,12 @@ from chemdx_agent.agents.recommend_agent.subagent import call_recommend_agent
 from chemdx_agent.agents.color_trend_agent.subagent import call_color_trend_agent
 
 
-system_prompt = (
+name = "PhosphorDataResearchAgent"
+role = "Route user requests to the correct phosphor subagent (Lookup / Recommend / ColorTrend) based on intent"
+context = "Use the registered tools to dispatch exactly one subagent and return its result"
+
+
+router_guidelines = (
     "You are the phosphors router agent for ChemDX.\n"
     "Route the user's request to exactly one of the following subagents based on intent:\n"
     "- PhosphorLookupAgent: Look up optical properties by formula (emission, decay, CIE, hex color).\n"
@@ -20,6 +25,11 @@ system_prompt = (
     "- If the user provides a host and a dopant and wants the trend vs concentration/ratio, use ColorTrendAgent.\n"
 )
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
+system_prompt = f"""You are the {name}. {role}. {context}\n\n{router_guidelines}"""
 
 phosphor_data_research_agent = Agent(
     model="openai:gpt-4o",
@@ -41,10 +51,14 @@ phosphor_data_research_agent.tool(call_color_trend_agent)
 async def call_phosphor_data_research_agent(ctx: RunContext[AgentState], message2agent: str):
     """Call the PhosphorDataResearchAgent router. It will decide which subagent to use based on the message."""
     agent_name = "PhosphorDataResearchAgent"
-    deps = ctx.deps
+    deps = ctx.deps or AgentState()
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await phosphor_data_research_agent.run(message2agent, deps=deps)
     output = result.output
+    if hasattr(deps, "add_working_memory"):
+        deps.add_working_memory(agent_name, message2agent)
+    if hasattr(deps, "increment_step"):
+        deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     return output

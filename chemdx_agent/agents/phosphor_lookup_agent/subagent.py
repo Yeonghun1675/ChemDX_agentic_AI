@@ -562,18 +562,21 @@ async def call_phosphor_lookup_agent(ctx: RunContext[AgentState], message2agent:
         - formula_to_hex_color: Convert formula to hex color using CIE xyY/XYZ values from database
         
         Example messages:
-        - "Load the phosphor database from './data/Inorganic_Phosphor.csv'"
+        - "Load the phosphor database from Inorganic_Phosphor_Optical_Properties_DB.csv"
         - "Find emission and decay for formula 'SrAl2O4:Eu2+'"
         - "Find 5 most similar formulas to 'YAG:Ce' with their emission and decay data"
         - "Convert formula 'SrAl2O4:Eu2+' to hex color using CIE values from the database"
     """
     agent_name = "PhosphorLookupAgent"
-    deps = ctx.deps
+    deps = ctx.deps or AgentState()
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await phosphor_agent.run(message2agent, deps=deps)
     output = result.output
-    
+    if hasattr(deps, "add_working_memory"):
+        deps.add_working_memory(agent_name, message2agent)
+    if hasattr(deps, "increment_step"):
+        deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     

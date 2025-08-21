@@ -6,7 +6,11 @@ from chemdx_agent.agents.estm_trend_agent.subagent import call_estm_trend_agent
 from chemdx_agent.agents.Phosphor_trend_agent.subagent import call_phosphor_trend_agent
 
 
-system_prompt = (
+name = "TrendAgent"
+role = "Route user requests to the correct dataset-specific trend subagent (MatDX/ESTM/Phosphor)"
+context = "Use the registered tools to dispatch exactly one subagent and return its result"
+
+router_guidelines = (
     "You are the Trend router agent for ChemDX.\n"
     "Route the user's request to one of the following subagents based on dataset/intent:\n"
     "- MatDXTrendAgent: Trends on formation energy/materials in MatDX_EF.csv.\n"
@@ -17,6 +21,8 @@ system_prompt = (
     "- If the user asks about formation energy or MatDX_EF columns, use MatDXTrendAgent.\n"
     "- If the user asks cross-material optical trends (not a single host+dopant ratio), use PhosphorTrendAgent.\n"
 )
+
+system_prompt = f"You are the {name}. {role}. {context}\n\n{router_guidelines}"
 
 
 trend_agent = Agent(
@@ -30,6 +36,10 @@ trend_agent = Agent(
     system_prompt=system_prompt,
 )
 
+working_memory_prompt = """Main Goal: {main_goal}
+Working Memory: {working_memory}
+"""
+
 # Register downstream subagents
 trend_agent.tool(call_matdx_trend_agent)
 trend_agent.tool(call_estm_trend_agent)
@@ -39,10 +49,14 @@ trend_agent.tool(call_phosphor_trend_agent)
 async def call_trend_agent(ctx: RunContext[AgentState], message2agent: str):
     """Call the Trend router agent. It will choose MatDX/ESTM/Phosphor trend subagent."""
     agent_name = "TrendAgent"
-    deps = ctx.deps
+    deps = ctx.deps or AgentState()
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
     result = await trend_agent.run(message2agent, deps=deps)
     output = result.output
+    if hasattr(deps, "add_working_memory"):
+        deps.add_working_memory(agent_name, message2agent)
+    if hasattr(deps, "increment_step"):
+        deps.increment_step()
     logger.info(f"[{agent_name}] Action: {output.action}")
     logger.info(f"[{agent_name}] Result: {output.result}")
     return output
