@@ -1,10 +1,14 @@
 
 from pydantic_graph import BaseNode
 from dataclasses import dataclass
+
+from pydantic_ai import Agent
+from pydantic_ai.usage import UsageLimits
 from typing import Optional
 
-from chemdx_agent.schema import AgentState, FinalAnswer
+from chemdx_agent.schema import AgentState, AgentInput, FinalAnswer
 from chemdx_agent.logger import logger
+from chemdx_agent.utils import make_tool_message
 from chemdx_agent.agents import *
 
 
@@ -20,7 +24,7 @@ main_agent = Agent(
         "temperature": 0.0,
         "parallel_tool_calls": False,
     },
-    system_propmpt = system_prompt,
+    system_prompt = system_prompt,
     tools = tools
 )
 
@@ -31,18 +35,26 @@ main_agent.tool(call_recommend_agent)
 main_agent.tool(call_viz_agent)
 main_agent.tool(call_mp_agent)
 main_agent.tool(call_phosphor_lookup_agent)
-main_agent.tool(call_sample_agent)
-main_agent.tool(call_general_agent)
 
 
-async def run_main_agent(message: str, deps: Optional[AgentState] = None):
+
+async def run_main_agent(message: str, deps=Optional[AgentState]):
     if deps is None:
         deps = AgentState()
 
-    logger.info(f"[Question] {message}")
     deps.main_task = message
-    result = await main_agent.run(message, deps=deps)
+
+    logger.info(f"[Question] {message}")
+    result = await main_agent.run(
+        message,
+        deps=deps,
+    )
+    
     output = result.output
+    list_tool_log = make_tool_message(result)
+    for log in list_tool_log:
+        logger.info(log)
+
     logger.info(f"[Final Answer] {output.final_answer}")
     logger.info(f"[Evaluation] {output.evaluation}")
     return output

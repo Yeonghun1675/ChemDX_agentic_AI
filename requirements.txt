@@ -10,3 +10,5 @@ numpy
 mp-api
 pymatgen
 seaborn 
+streamlit
+

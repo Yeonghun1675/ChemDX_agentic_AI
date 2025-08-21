@@ -1,7 +1,10 @@
 # --- in chemdx_agent/viz_agent.py ---
 from typing import Optional, Dict, Any, List, Literal
 from pydantic_ai import Agent, RunContext
-from chemdx_agent.schema import AgentState
+
+
+from chemdx_agent.schema import AgentState, Result
+
 from chemdx_agent.logger import logger
 
 import os, uuid
@@ -19,7 +22,7 @@ context = "Important Context that agent should be know. For example, you must no
 
 system_prompt = f"""You are the {name}. You can use available tools or request help from specialized sub-agents that perform specific tasks. You must only carry out the role assigned to you. If a request is outside your capabilities, you should ask for support from the appropriate agent instead of trying to handle it yourself.
 
-Your Currunt Role: {role}
+Your Current Role: {role}
 Important Context: {context}
 """
 
@@ -56,16 +59,30 @@ async def plot_yt_vs_T_for_best(
     2) Fetch all rows for that formula.
     3) Plot y vs temperature(K). Return figure path + data snapshot path.
     """
-    # import here to avoid circular import
-    from chemdx_agent.agents.tme_db_agent.subagent import database_agent
 
-    # step 1: top-1
-    r1 = await database_agent.run(
-        {"op":"get_top_performers","property_name":metric,"max_results":1,
-         "min_temperature":temp_min,"max_temperature":temp_max},
-        deps=ctx.deps, usage=ctx.usage
-    )
-    top_payload = r1.output.result if isinstance(r1.output.result, dict) else {}
+    # Use the proper call function instead of direct agent import
+    from chemdx_agent.agents.tme_db_agent.subagent import call_database_agent
+
+    # step 1: get top performers
+    db_query = f"Get top 1 materials by {metric}"
+    if temp_min:
+        db_query += f" with minimum temperature {temp_min}K"
+    if temp_max:
+        db_query += f" with maximum temperature {temp_max}K"
+    
+    r1 = await call_database_agent(ctx, db_query)
+    if not hasattr(r1, 'result'):
+        return {"ok": False, "error": "Database agent call failed"}
+    
+    top_payload = r1.result if hasattr(r1, 'result') else {}
+    if isinstance(top_payload, str):
+        # Try to parse if it's a string
+        try:
+            import json
+            top_payload = json.loads(top_payload)
+        except:
+            return {"ok": False, "error": "Could not parse database response"}
+    
     top_list = top_payload.get("results", [])
     if not top_list:
         return {"ok": False, "error": "No top candidate found."}
@@ -73,10 +90,20 @@ async def plot_yt_vs_T_for_best(
     if not formula:
         return {"ok": False, "error": "Top entry missing 'formula'."}
 
-    # step 2: rows for formula
-    r2 = await database_agent.run({"op":"get_material_properties","formula":formula}, deps=ctx.deps, usage=ctx.usage)
-    rows_payload = r2.output.result if isinstance(r2.output.result, dict) else {}
-    rows: List[Dict[str, Any]] = rows_payload.get("rows", [])
+    # step 2: get rows for formula
+    r2 = await call_database_agent(ctx, f"Get material properties for formula {formula}")
+    if not hasattr(r2, 'result'):
+        return {"ok": False, "error": "Database agent call for material properties failed"}
+    
+    rows_payload = r2.result if hasattr(r2, 'result') else {}
+    if isinstance(rows_payload, str):
+        try:
+            import json
+            rows_payload = json.loads(rows_payload)
+        except:
+            return {"ok": False, "error": "Could not parse material properties response"}
+    
+    rows: List[Dict[str, Any]] = rows_payload.get("results", [])
     if not rows:
         return {"ok": False, "error": f"No rows for formula {formula}."}
 
@@ -104,11 +131,69 @@ async def plot_yt_vs_T_for_best(
 
     return {"ok": True, "figure_path": fig_path, "data_csv_path": data_path, "formula": formula}
 
+@viz_agent.tool_plain
+def create_simple_plot(
+    x_data: list,
+    y_data: list,
+    title: str = "Simple Plot",
+    x_label: str = "X",
+    y_label: str = "Y",
+    prefix: str = "simple"
+) -> Dict[str, Any]:
+    """
+    Create a simple plot from provided data.
+    
+    Args:
+        x_data: list of x values
+        y_data: list of y values  
+        title: plot title
+        x_label: x-axis label
+        y_label: y-axis label
+        prefix: filename prefix
+        
+    Returns:
+        Dict with plot path and data path
+    """
+    try:
+        # Create plot
+        fig_path = _outfile(prefix)
+        data_path = fig_path.replace(".png", "_data.csv")
+        
+        plt.figure()
+        plt.plot(x_data, y_data, marker="o", linewidth=2, markersize=6)
+        plt.xlabel(x_label)
+        plt.ylabel(y_label)
+        plt.title(title)
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(fig_path, dpi=200, bbox_inches='tight')
+        plt.close()
+        
+        # Save data
+        import pandas as pd
+        df = pd.DataFrame({'x': x_data, 'y': y_data})
+        df.to_csv(data_path, index=False)
+        
+        return {
+            "ok": True,
+            "figure_path": fig_path,
+            "data_csv_path": data_path,
+            "title": title
+        }
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "figure_path": None,
+            "data_csv_path": None
+        }
+
 
 
     # call agent function
 async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
-    f"""Call general agent to execute the task: {role}
+    """Call visualization agent to execute the task: {role}
 
     args:
         message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
@@ -120,7 +205,7 @@ async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
 
-    user_prompt = "Current Task of your role: {message2agent}"
+    user_prompt = f"Current Task of your role: {message2agent}"
 
     result = await viz_agent.run(
         user_prompt, deps=deps
@@ -130,7 +215,7 @@ async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
 
-    logger.info(f"[{agent_name}] Action: {output.action}")
-    logger.info(f"[{agent_name}] Result: {output.result}")
+    logger.info(f"[{agent_name}] Action: {getattr(output, 'action', 'N/A')}")
+    logger.info(f"[{agent_name}] Result: {getattr(output, 'result', 'N/A')}")
 
     return output

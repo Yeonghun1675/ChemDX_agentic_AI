@@ -24,7 +24,7 @@ context = "You must NOT invent data. Always return real entries from Materials P
 
 system_prompt = f"""You are the {name}. You can use available tools or request help from specialized sub-agents that perform specific tasks. You must only carry out the role assigned to you. If a request is outside your capabilities, you should ask for support from the appropriate agent instead of trying to handle it yourself.
 
-Your Currunt Role: {role}
+Your Current Role: {role}
 Important Context: {context}
 """
 
@@ -55,17 +55,26 @@ async def fetch_structure(
     Query MP for `material` and return:
       { ok: bool, structure_payload: dict|{cif: str}, payload_format: 'pmg_dict'|'cif', meta: {...}, error? }
     """
-    # IMPLEMENT: actually call mp_api here; below is a placeholder structured stub.
     try:
-        # ... your real MP call ...
-        # structure_dict = Structure.as_dict() or {'cif': '...'}
-        return {
-            "ok": True,
-            "structure_payload": {"dummy": "replace_with_structure_as_dict"},
-            "payload_format": payload_format,
-            "meta": {"material_query": material, "specification": specification or {}},
-        }
+        # Use the existing get_best_structure tool
+        result = get_best_structure(material, specification, payload_format)
+        
+        if result.get("ok"):
+            return {
+                "ok": True,
+                "structure_payload": result["structure_payload"],
+                "payload_format": result["payload_format"],
+                "meta": result["meta"]
+            }
+        else:
+            return {
+                "ok": False,
+                "error": result.get("error", "Unknown error"),
+                "meta": result.get("meta", {})
+            }
+            
     except Exception as e:
+        logger.error(f"[MP fetch_structure] {e}")
         return {"ok": False, "error": str(e)}
 
 @mp_agent.system_prompt(dynamic=True)
@@ -277,7 +286,11 @@ def get_best_structure(
 # -----------------------------
 
 async def call_mp_agent(ctx: RunContext[AgentState], message2agent: str):
-    """
+    """Call general agent to execute the task: {role}
+
+    args:
+        message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
+    
     This agent is used to query the materials project for a given material and return the structure and metadata.
     It can call the list_candidates and get_best_structure tools to fetch the structure and metadata.
     """
