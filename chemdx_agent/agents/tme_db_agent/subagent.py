@@ -496,7 +496,12 @@ def get_material_summary() -> Dict[str, Any]:
 #----------
 
 async def call_database_agent(ctx: RunContext[AgentState], message2agent: str):
-    """Call DatabaseAgent to execute a query on thermoelectric materials DB."""
+    """Call general agent to execute the task: {role}
+
+    args:
+        message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
+
+    This agent can look up the thermoelectric materials database to execute a query on thermoelectric materials DB."""
     agent_name = "DatabaseAgent"
     deps = ctx.deps
 
