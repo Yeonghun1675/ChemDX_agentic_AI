@@ -59,77 +59,96 @@ async def plot_yt_vs_T_for_best(
     2) Fetch all rows for that formula.
     3) Plot y vs temperature(K). Return figure path + data snapshot path.
     """
-
-    # Use the proper call function instead of direct agent import
-    from chemdx_agent.agents.tme_db_agent.subagent import call_database_agent
-
-    # step 1: get top performers
-    db_query = f"Get top 1 materials by {metric}"
-    if temp_min:
-        db_query += f" with minimum temperature {temp_min}K"
-    if temp_max:
-        db_query += f" with maximum temperature {temp_max}K"
-    
-    r1 = await call_database_agent(ctx, db_query)
-    if not hasattr(r1, 'result'):
-        return {"ok": False, "error": "Database agent call failed"}
-    
-    top_payload = r1.result if hasattr(r1, 'result') else {}
-    if isinstance(top_payload, str):
-        # Try to parse if it's a string
-        try:
-            import json
-            top_payload = json.loads(top_payload)
-        except:
-            return {"ok": False, "error": "Could not parse database response"}
-    
-    top_list = top_payload.get("results", [])
-    if not top_list:
-        return {"ok": False, "error": "No top candidate found."}
-    formula = top_list[0].get("formula")
-    if not formula:
-        return {"ok": False, "error": "Top entry missing 'formula'."}
-
-    # step 2: get rows for formula
-    r2 = await call_database_agent(ctx, f"Get material properties for formula {formula}")
-    if not hasattr(r2, 'result'):
-        return {"ok": False, "error": "Database agent call for material properties failed"}
-    
-    rows_payload = r2.result if hasattr(r2, 'result') else {}
-    if isinstance(rows_payload, str):
-        try:
-            import json
-            rows_payload = json.loads(rows_payload)
-        except:
-            return {"ok": False, "error": "Could not parse material properties response"}
-    
-    rows: List[Dict[str, Any]] = rows_payload.get("results", [])
-    if not rows:
-        return {"ok": False, "error": f"No rows for formula {formula}."}
-
-    df = pd.DataFrame(rows)
-    if "temperature(K)" not in df.columns or y not in df.columns:
-        return {"ok": False, "error": "Required columns missing."}
-
-    # numeric checks
-    df = df.dropna(subset=["temperature(K)", y])
-    df = df.sort_values("temperature(K)")
-
-    # step 3: plot
-    fig_path = _outfile("yt_vs_T")
-    data_path = fig_path.replace(".png", "_data.csv")
-    plt.figure()
-    plt.plot(df["temperature(K)"], df[y], marker="o", label=formula)
-    plt.xlabel("Temperature (K)")
-    plt.ylabel(y)
-    plt.title(f"{y} vs Temperature for {formula}")
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(fig_path, dpi=200)
-    plt.close()
-    df.to_csv(data_path, index=False)
-
-    return {"ok": True, "figure_path": fig_path, "data_csv_path": data_path, "formula": formula}
+    try:
+        # Import database agent functions directly
+        from chemdx_agent.agents.tme_db_agent.subagent import get_top_performers, get_material_properties
+        
+        # Step 1: Get top performer by metric
+        top_result = get_top_performers(
+            property_name=metric, 
+            max_results=1, 
+            min_temperature=temp_min, 
+            max_temperature=temp_max
+        )
+        
+        if not top_result.get("results"):
+            return {
+                "ok": False,
+                "error": f"No materials found for metric '{metric}' in temperature range {temp_min}K - {temp_max}K",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Get the top material
+        top_material = top_result["results"][0]
+        formula = top_material["formula"]
+        
+        # Step 2: Get all temperature data for this material
+        material_data = get_material_properties(formula)
+        
+        if not material_data.get("results"):
+            return {
+                "ok": False,
+                "error": f"No temperature data found for material {formula}",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Step 3: Create the plot
+        data_rows = material_data["results"]
+        
+        # Extract temperature and y-axis data
+        temp_data = [row.get("temperature(K)", 0) for row in data_rows]
+        y_data = [row.get(y, 0) for row in data_rows]
+        
+        # Filter out invalid data points
+        valid_data = [(t, y_val) for t, y_val in zip(temp_data, y_data) 
+                     if t is not None and y_val is not None and not pd.isna(t) and not pd.isna(y_val)]
+        
+        if not valid_data:
+            return {
+                "ok": False,
+                "error": f"No valid data points found for {y} vs temperature",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        temp_clean, y_clean = zip(*valid_data)
+        
+        # Create the plot
+        title = f"{y} vs Temperature for {formula} (Top {metric} performer)"
+        if temp_min or temp_max:
+            temp_range = f" ({temp_min or 'min'}K - {temp_max or 'max'}K)"
+            title += temp_range
+        
+        plot_result = create_thermoelectric_plot(
+            material_formula=formula,
+            temperature_data=list(temp_clean),
+            zt_data=list(y_clean),
+            title=title,
+            prefix=f"top_{metric.lower()}_{formula.replace('(', '').replace(')', '').replace('.', '')}"
+        )
+        
+        if plot_result.get("ok"):
+            # Add metadata about the top performer
+            plot_result["top_performer_info"] = {
+                "formula": formula,
+                "metric": metric,
+                "avg_value": top_material.get(f"avg_{metric.lower()}", "N/A"),
+                "temperature_range": top_material.get("temperature_range", "N/A"),
+                "data_points": top_material.get("data_points", 0)
+            }
+        
+        return plot_result
+        
+    except Exception as e:
+        logger.error(f"[DataVisualisationAgent] Error in plot_yt_vs_T_for_best: {e}")
+        return {
+            "ok": False,
+            "error": f"Failed to create plot: {str(e)}",
+            "figure_path": None,
+            "data_csv_path": None
+        }
 
 @viz_agent.tool_plain
 def create_simple_plot(
@@ -179,6 +198,189 @@ def create_simple_plot(
             "figure_path": fig_path,
             "data_csv_path": data_path,
             "title": title
+        }
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "figure_path": None,
+            "data_csv_path": None
+        }
+
+@viz_agent.tool_plain
+def create_plot_from_database_data(
+    data_rows: List[Dict[str, Any]],
+    x_column: str = "temperature(K)",
+    y_column: str = "ZT",
+    title: str = "Database Data Plot",
+    formula: str = "Unknown",
+    prefix: str = "db_plot"
+) -> Dict[str, Any]:
+    """
+    Create a plot from database data rows.
+    
+    Args:
+        data_rows: List of dictionaries containing database rows
+        x_column: Column name for x-axis (default: "temperature(K)")
+        y_column: Column name for y-axis (default: "ZT")
+        title: Plot title
+        formula: Material formula for labeling
+        prefix: Filename prefix
+        
+    Returns:
+        Dict with plot path and data path
+    """
+    try:
+        if not data_rows:
+            return {
+                "ok": False,
+                "error": "No data rows provided",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(data_rows)
+        
+        # Check required columns
+        if x_column not in df.columns or y_column not in df.columns:
+            return {
+                "ok": False,
+                "error": f"Required columns missing. Available columns: {list(df.columns)}",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Clean and sort data
+        df = df.dropna(subset=[x_column, y_column])
+        df = df.sort_values(x_column)
+        
+        if len(df) == 0:
+            return {
+                "ok": False,
+                "error": "No valid data points after cleaning",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Create plot
+        fig_path = _outfile(prefix)
+        data_path = fig_path.replace(".png", "_data.csv")
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(df[x_column], df[y_column], marker="o", linewidth=2, markersize=6, label=formula)
+        plt.xlabel(x_column)
+        plt.ylabel(y_column)
+        plt.title(title)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(fig_path, dpi=200, bbox_inches='tight')
+        plt.close()
+        
+        # Save data
+        df.to_csv(data_path, index=False)
+        
+        return {
+            "ok": True,
+            "figure_path": fig_path,
+            "data_csv_path": data_path,
+            "title": title,
+            "formula": formula,
+            "data_points": len(df),
+            "x_range": f"{df[x_column].min():.1f} - {df[x_column].max():.1f}",
+            "y_range": f"{df[y_column].min():.3f} - {df[y_column].max():.3f}"
+        }
+        
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "figure_path": None,
+            "data_csv_path": None
+        }
+
+@viz_agent.tool_plain
+def create_thermoelectric_plot(
+    material_formula: str,
+    temperature_data: List[float],
+    zt_data: List[float],
+    title: str = None,
+    prefix: str = "thermoelectric"
+) -> Dict[str, Any]:
+    """
+    Create a thermoelectric plot showing ZT vs Temperature for a specific material.
+    
+    Args:
+        material_formula: Chemical formula of the material
+        temperature_data: List of temperature values in K
+        zt_data: List of ZT values
+        title: Optional plot title
+        prefix: Filename prefix
+        
+    Returns:
+        Dict with plot path and data path
+    """
+    try:
+        if len(temperature_data) != len(zt_data):
+            return {
+                "ok": False,
+                "error": "Temperature and ZT data lists must have the same length",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        if not temperature_data or not zt_data:
+            return {
+                "ok": False,
+                "error": "No data provided",
+                "figure_path": None,
+                "data_csv_path": None
+            }
+        
+        # Create plot
+        fig_path = _outfile(prefix)
+        data_path = fig_path.replace(".png", "_data.csv")
+        
+        # Use provided title or generate one
+        plot_title = title or f"ZT vs Temperature for {material_formula}"
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(temperature_data, zt_data, marker="o", linewidth=2, markersize=6, label=material_formula)
+        plt.xlabel("Temperature (K)")
+        plt.ylabel("ZT")
+        plt.title(plot_title)
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        plt.tight_layout()
+        plt.savefig(fig_path, dpi=200, bbox_inches='tight')
+        plt.close()
+        
+        # Save data
+        import pandas as pd
+        df = pd.DataFrame({
+            'temperature_K': temperature_data,
+            'ZT': zt_data
+        })
+        df.to_csv(data_path, index=False)
+        
+        # Find optimal temperature
+        max_zt_idx = zt_data.index(max(zt_data))
+        optimal_temp = temperature_data[max_zt_idx]
+        optimal_zt = zt_data[max_zt_idx]
+        
+        return {
+            "ok": True,
+            "figure_path": fig_path,
+            "data_csv_path": data_path,
+            "title": plot_title,
+            "formula": material_formula,
+            "data_points": len(temperature_data),
+            "temperature_range": f"{min(temperature_data):.0f}K - {max(temperature_data):.0f}K",
+            "optimal_temperature": optimal_temp,
+            "optimal_zt": optimal_zt,
+            "zt_range": f"{min(zt_data):.3f} - {max(zt_data):.3f}"
         }
         
     except Exception as e:

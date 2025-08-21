@@ -45,19 +45,26 @@ mp_agent = Agent(
 
 
 @mp_agent.tool
-async def fetch_structure(
+async def mp_agent_tool(
     ctx: RunContext[AgentState],
-    material: str,
+    query: str,
     specification: Optional[Dict[str, Any]] = None,
     payload_format: str = "pmg_dict",
 ) -> Dict[str, Any]:
     """
-    Query MP for `material` and return:
-      { ok: bool, structure_payload: dict|{cif: str}, payload_format: 'pmg_dict'|'cif', meta: {...}, error? }
+    Main entry point for Materials Project queries.
+    
+    Args:
+        query: Material query (formula, name, or mp-id)
+        specification: Optional constraints
+        payload_format: 'pmg_dict' or 'cif'
+        
+    Returns:
+        Dict with structure data and metadata
     """
     try:
         # Use the existing get_best_structure tool
-        result = get_best_structure(material, specification, payload_format)
+        result = get_best_structure(query, specification, payload_format)
         
         if result.get("ok"):
             return {
@@ -74,7 +81,7 @@ async def fetch_structure(
             }
             
     except Exception as e:
-        logger.error(f"[MP fetch_structure] {e}")
+        logger.error(f"[MP mp_agent_tool] {e}")
         return {"ok": False, "error": str(e)}
 
 @mp_agent.system_prompt(dynamic=True)
@@ -109,6 +116,15 @@ def _get_api_key(ctx: Optional[RunContext[AgentState]] = None) -> Optional[str]:
     if ctx and getattr(ctx, "deps", None) and hasattr(ctx.deps, "materials_api_key"):
         if ctx.deps.materials_api_key:
             return ctx.deps.materials_api_key
+    
+    # 2) try environment variable
+    import os
+    env_key = os.getenv("MP_API_KEY")
+    if env_key:
+        return env_key
+    
+    # 3) fallback to default key (this should be replaced with proper environment variable)
+    logger.warning("[MaterialsProjectAgent] Using fallback API key. Please set MP_API_KEY environment variable for production use.")
     return "Dhh7A13C7WRm72FnGobshRFyCeEM9X7h"
 
 def _doc_to_meta(doc) -> Dict[str, Any]:

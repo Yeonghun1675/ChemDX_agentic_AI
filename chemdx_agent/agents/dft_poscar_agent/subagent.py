@@ -65,6 +65,7 @@ def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
 class PoscarResult(TypedDict, total=False):
     ok: bool
     path: Optional[str]
+    poscar_content: Optional[str]  # New field to store POSCAR content as text
     warnings: List[str]
     error: Optional[str]
     meta: Dict[str, Any]  # e.g., {"mp_id": "...", "formula_pretty": "...", "spacegroup": "...", "cell": "conventional"}
@@ -106,6 +107,15 @@ def _structure_summary(structure: Structure) -> Dict[str, Any]:
 def _write_poscar(structure: Structure, outfile: str) -> None:
     Poscar(structure).write_file(outfile)
 
+def _read_poscar_content(outfile: str) -> str:
+    """Read and return the POSCAR file content as text."""
+    try:
+        with open(outfile, 'r') as f:
+            return f.read()
+    except Exception as e:
+        logger.error(f"[DFT_POSCAR] Failed to read POSCAR content: {e}")
+        return f"Error reading POSCAR content: {str(e)}"
+
 
 # -----------------------------
 
@@ -125,48 +135,62 @@ async def generate_poscar_via_mp(
       2) Write a POSCAR using the returned payload.
 
     Returns:
-      PoscarResult = { ok, path?, warnings?, error?, meta? }
+      PoscarResult = { ok, path?, poscar_content?, warnings?, error?, meta? }
     """
-    # Import here to avoid circular imports at module import time
+    warnings: List[str] = []
+    
     try:
-        from chemdx_agent.agents.mat_proj_lookup_agent.subagent import mp_lookup_agent
+        # Import and call Materials Project agent directly
+        from chemdx_agent.agents.mat_proj_lookup_agent.subagent import get_best_structure
+        
+        # Step 1: Get the best structure from MP
+        mp_result = get_best_structure(material, specification, payload_format)
+        
+        if not mp_result.get("ok"):
+            return PoscarResult(
+                ok=False,
+                error=f"Materials Project lookup failed: {mp_result.get('error', 'Unknown error')}",
+                warnings=warnings
+            )
+        
+        # Extract structure payload and metadata
+        structure_payload = mp_result.get("structure_payload")
+        payload_format_actual = mp_result.get("payload_format", payload_format)
+        meta = mp_result.get("meta", {})
+        
+        if not structure_payload:
+            return PoscarResult(
+                ok=False,
+                error="No structure payload received from Materials Project agent",
+                warnings=warnings
+            )
+        
+        # Step 2: Generate POSCAR from the structure
+        poscar_result = generate_poscar_from_structure(
+            structure_payload=structure_payload,
+            payload_format=payload_format_actual,
+            cell=cell,
+            supercell=supercell,
+            meta=meta
+        )
+        
+        # Add coordination info to metadata
+        if poscar_result.get("ok") and poscar_result.get("meta"):
+            poscar_result["meta"]["coordination"] = "Generated via Materials Project coordination"
+            poscar_result["meta"]["material_query"] = material
+            poscar_result["meta"]["specification"] = specification or {}
+            if extra_meta:
+                poscar_result["meta"].update(extra_meta)
+        
+        return poscar_result
+        
     except Exception as e:
-        return PoscarResult(ok=False, error=f"Failed to import MaterialsProjectAgent: {e}")
-
-    # 1) Fetch structure from MP
-    mp_req = {
-        "material": material,
-        "specification": specification or {},
-        "payload_format": payload_format,
-    }
-    mp_res = await mp_lookup_agent.run(mp_req, deps=ctx.deps, usage=ctx.usage)
-    mp_out = mp_res.output if isinstance(mp_res.output, dict) else getattr(mp_res, "output", {})
-
-    if not isinstance(mp_out, dict) or not mp_out.get("ok"):
-        return PoscarResult(ok=False, error=f"MP lookup failed: {mp_out.get('error', 'unknown error')}")
-
-    structure_payload = mp_out.get("structure_payload")
-    pf = mp_out.get("payload_format", payload_format)
-    if structure_payload is None or pf not in ("pmg_dict", "cif"):
-        return PoscarResult(ok=False, error="Invalid MP payload: missing structure_payload or unsupported payload_format.")
-
-    # Merge meta for traceability
-    meta: Dict[str, Any] = {}
-    if isinstance(mp_out.get("meta"), dict):
-        meta.update(mp_out["meta"])
-    if isinstance(extra_meta, dict):
-        meta.update(extra_meta)
-    meta.update({"material_query": material})
-
-    # 2) Write POSCAR using your existing pure tool
-    poscar_res = generate_poscar_from_structure(
-        structure_payload=structure_payload,
-        payload_format=pf,
-        cell=cell,
-        supercell=supercell,
-        meta=meta,
-    )
-    return poscar_res
+        logger.error(f"[DFT_POSCAR] Failed to generate POSCAR via MP: {e}")
+        return PoscarResult(
+            ok=False,
+            error=f"Failed to generate POSCAR via Materials Project: {str(e)}",
+            warnings=warnings
+        )
 
 @dft_poscar_agent.tool_plain
 def generate_poscar_from_material(
@@ -192,29 +216,60 @@ def generate_poscar_from_material(
         title: optional title for metadata (not used in POSCAR text; VASP standard file is named 'POSCAR').
 
     Returns:
-        PoscarResult: { ok, path, warnings, error, meta }
+        PoscarResult: { ok, path, poscar_content, warnings, error, meta }
     """
     warnings: List[str] = []
     spec = specification or {}
 
     try:
-        # This tool is designed to work with the coordinator pattern
-        # The coordinator should first call MaterialsProjectAgent to get the structure
-        # and then call generate_poscar_from_structure with the result
+        # Import and call Materials Project agent directly
+        from chemdx_agent.agents.mat_proj_lookup_agent.subagent import get_best_structure
         
-        warnings.append("This tool requires coordination with MaterialsProjectAgent")
-        warnings.append("Use the workflow: (1) call MP agent to get structure, (2) call generate_poscar_from_structure")
+        # Step 1: Get the best structure from MP
+        mp_result = get_best_structure(material, spec, "pmg_dict")
         
-        return PoscarResult(
-            ok=False,
-            error="This tool requires coordination with MaterialsProjectAgent. Use the workflow: (1) call MP agent to get structure, (2) call generate_poscar_from_structure",
-            warnings=warnings
+        if not mp_result.get("ok"):
+            return PoscarResult(
+                ok=False,
+                error=f"Materials Project lookup failed: {mp_result.get('error', 'Unknown error')}",
+                warnings=warnings
+            )
+        
+        # Extract structure payload and metadata
+        structure_payload = mp_result.get("structure_payload")
+        payload_format = mp_result.get("payload_format", "pmg_dict")
+        meta = mp_result.get("meta", {})
+        
+        if not structure_payload:
+            return PoscarResult(
+                ok=False,
+                error="No structure payload received from Materials Project agent",
+                warnings=warnings
+            )
+        
+        # Step 2: Generate POSCAR from the structure
+        poscar_result = generate_poscar_from_structure(
+            structure_payload=structure_payload,
+            payload_format=payload_format,
+            cell=cell,
+            supercell=supercell,
+            meta=meta
         )
         
+        # Add metadata about the original request
+        if poscar_result.get("ok") and poscar_result.get("meta"):
+            poscar_result["meta"]["material_query"] = material
+            poscar_result["meta"]["specification"] = spec
+            if title:
+                poscar_result["meta"]["title"] = title
+        
+        return poscar_result
+        
     except Exception as e:
+        logger.error(f"[DFT_POSCAR] Failed to generate POSCAR from material: {e}")
         return PoscarResult(
             ok=False,
-            error=str(e),
+            error=f"Failed to generate POSCAR from material: {str(e)}",
             warnings=warnings
         )
 
@@ -239,7 +294,7 @@ def generate_poscar_from_structure(
         meta: optional metadata (mp_id, formula_pretty, energy_above_hull, spacegroup, etc.)
 
     Returns:
-        PoscarResult
+        PoscarResult with both path and poscar_content
     """
     warnings: List[str] = []
     try:
@@ -264,6 +319,9 @@ def generate_poscar_from_structure(
         outfile = _outfile_path(prefix="mp")
         _write_poscar(structure, outfile)
 
+        # Read POSCAR content as text
+        poscar_content = _read_poscar_content(outfile)
+
         # Build meta block
         auto_meta = _structure_summary(structure)
         if meta:
@@ -272,7 +330,13 @@ def generate_poscar_from_structure(
         if supercell:
             auto_meta["supercell"] = supercell
 
-        return PoscarResult(ok=True, path=outfile, warnings=warnings, meta=auto_meta)
+        return PoscarResult(
+            ok=True, 
+            path=outfile, 
+            poscar_content=poscar_content,
+            warnings=warnings, 
+            meta=auto_meta
+        )
 
     except Exception as e:
         logger.error(f"[DFT_POSCAR] Failed to write POSCAR: {e}")
@@ -299,7 +363,7 @@ async def generate_poscar_coordinated(
         title: optional title for metadata
 
     Returns:
-        PoscarResult: { ok, path, warnings, error, meta }
+        PoscarResult: { ok, path, poscar_content, warnings, error, meta }
     """
     warnings: List[str] = []
     spec = specification or {}
@@ -474,7 +538,7 @@ async def generate_poscar_for_material_with_best_zt_temperature(
         supercell: optional 3x3 integer matrix
         
     Returns:
-        PoscarResult: { ok, path, warnings, error, meta }
+        PoscarResult: { ok, path, poscar_content, warnings, error, meta }
     """
     warnings: List[str] = []
     
@@ -585,7 +649,7 @@ async def generate_poscar_for_thermoelectric(
         supercell: optional 3x3 integer matrix
         
     Returns:
-        PoscarResult: { ok, path, warnings, error, meta }
+        PoscarResult: { ok, path, poscar_content, warnings, error, meta }
     """
     warnings: List[str] = []
     
