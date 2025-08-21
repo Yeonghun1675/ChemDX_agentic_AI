@@ -1,8 +1,10 @@
 # chemdx_agent/materials_agent.py
 from __future__ import annotations
 
+from ast import DictComp
 from typing import List, Dict, Any, Optional, Literal, TypedDict, Union
 from pydantic_ai import Agent, RunContext
+from requests.utils import dict_to_sequence
 
 from chemdx_agent.schema import AgentState, Result
 from chemdx_agent.logger import logger
@@ -15,36 +17,61 @@ from pymatgen.core import Structure
 
 # -----------------------------
 
-NAME = "MaterialsProjectAgent"
-ROLE = "Query Materials Project for structures and metadata; return a serializable structure payload plus key metadata."
-CONTEXT = """You must NOT invent data. Always return real entries from Materials Project.
-If multiple candidates match, use constraints (mp_id, spacegroup, crystal_system, elements) to narrow down.
-Prefer lowest energy_above_hull when no other constraints are provided.
-Return both a structure payload (pmg_dict or CIF) and a concise metadata dict."""
+name = "MaterialsProjectAgent"
+role = "Query Materials Project for structures and metadata; return a serializable structure payload plus key metadata."
+context = "You must NOT invent data. Always return real entries from Materials Project.If multiple candidates match, use constraints (mp_id, spacegroup, crystal_system, elements) to narrow down.Prefer lowest energy_above_hull when no other constraints are provided.Return both a structure payload (pmg_dict or CIF) and a concise metadata dict"
 
-SYSTEM_PROMPT = f"""You are the {NAME}.
-You query Materials Project via MPRester and return (1) a structure payload and (2) metadata.
-If the query is ambiguous or empty, return a clear error with suggestions (e.g., show top matches)."""
 
-WORKING_MEMORY_PROMPT = """Main Goal: {main_goal}
+system_prompt = f"""You are the {name}. You can use available tools or request help from specialized sub-agents that perform specific tasks. You must only carry out the role assigned to you. If a request is outside your capabilities, you should ask for support from the appropriate agent instead of trying to handle it yourself.
+
+Your Currunt Role: {role}
+Important Context: {context}
+"""
+
+working_memory_prompt = """Main Goal: {main_goal}
 Working Memory: {working_memory}
 """
 
 mp_agent = Agent(
-    model="openai:gpt-4o",
-    output_type=Result,          
-    deps_type=AgentState,
-    model_settings={
+    model = "openai:gpt-4o",
+    output_type = Result,
+    deps_type = AgentState,
+    model_settings = {
         "temperature": 0.0,
         "parallel_tool_calls": False,
     },
-    system_prompt=SYSTEM_PROMPT,
+    system_prompt = system_prompt,
 )
+
+
+@mp_agent.tool
+async def fetch_structure(
+    ctx: RunContext[AgentState],
+    material: str,
+    specification: Optional[Dict[str, Any]] = None,
+    payload_format: str = "pmg_dict",
+) -> Dict[str, Any]:
+    """
+    Query MP for `material` and return:
+      { ok: bool, structure_payload: dict|{cif: str}, payload_format: 'pmg_dict'|'cif', meta: {...}, error? }
+    """
+    # IMPLEMENT: actually call mp_api here; below is a placeholder structured stub.
+    try:
+        # ... your real MP call ...
+        # structure_dict = Structure.as_dict() or {'cif': '...'}
+        return {
+            "ok": True,
+            "structure_payload": {"dummy": "replace_with_structure_as_dict"},
+            "payload_format": payload_format,
+            "meta": {"material_query": material, "specification": specification or {}},
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 @mp_agent.system_prompt(dynamic=True)
 def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
     deps = ctx.deps
-    return WORKING_MEMORY_PROMPT.format(
+    return working_memory_prompt.format(
         main_goal=deps.main_task,
         working_memory=deps.working_memory_description,
     )
@@ -191,6 +218,7 @@ def list_candidates(
         logger.error(f"[MP list_candidates] {e}")
         return []
 
+
 @mp_agent.tool_plain
 def get_best_structure(
     query: str,
@@ -243,37 +271,21 @@ def get_best_structure(
         logger.error(f"[MP get_best_structure] {e}")
         return MPStructureResult(ok=False, error=str(e), meta={})
 
-@mp_agent.tool_plain
-def get_structure_by_mpid(
-    mp_id: str,
-    payload_format: Literal["pmg_dict","cif"] = "pmg_dict"
-) -> MPStructureResult:
-    """Direct fetch by mp-id."""
-    api_key = _get_api_key()
-    if not api_key:
-        return MPStructureResult(ok=False, error="Missing MP_API_KEY.", meta={})
-    try:
-        with MPRester(api_key) as mpr:
-            docs = mpr.materials.summary.search(material_ids=[mp_id])
-            if not docs:
-                return MPStructureResult(ok=False, error=f"No entry for {mp_id}.", meta={})
-            doc = docs[0]
-            structure: Structure = mpr.get_structure_by_material_id(mp_id)
-            payload = _serialize_structure(structure, payload_format)
-            meta = _doc_to_meta(doc)
-            return MPStructureResult(ok=True, structure_payload=payload, payload_format=payload_format, meta=meta)
-    except Exception as e:
-        logger.error(f"[MP get_structure_by_mpid] {e}")
-        return MPStructureResult(ok=False, error=str(e), meta={})
+
+
 
 # -----------------------------
 
-async def call_materials_project_agent(ctx: RunContext[AgentState], message2agent: str):
+async def call_mp_agent(ctx: RunContext[AgentState], message2agent: str):
+    """Call general agent to execute the task: {role}
+
+    args:
+        message2agent: (str) A message to pass to the agent. Since you're talking to another AGENT, you must describe in detail and specifically what you need to do.
+    
+    This agent is used to query the materials project for a given material and return the structure and metadata.
+    It can call the list_candidates and get_best_structure tools to fetch the structure and metadata.
     """
-    Orchestrator entrypoint (optional).
-    Typically your coordinator will call specific tools above directly.
-    """
-    agent_name = NAME
+    agent_name = "MaterialsProjectAgent"
     deps = ctx.deps
 
     logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
@@ -288,5 +300,4 @@ async def call_materials_project_agent(ctx: RunContext[AgentState], message2agen
     logger.info(f"[{agent_name}] Action: {getattr(output, 'action', None)}")
     logger.info(f"[{agent_name}] Result: {getattr(output, 'result', None)}")
     return output
-
 
