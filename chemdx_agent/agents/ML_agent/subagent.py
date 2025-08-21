@@ -38,8 +38,8 @@ role = "Build and evaluate a composition-based ML regression model"
 context = (
     "Given a dataset (already loaded/refined by another agent) with chemical formulas (formula) and a target property, "
     "automatically generate composition features (matminer, Magpie preset), split train/val/test (0.80/0.05/0.15), "
-    "train LightGBM, Random Forest, Decision Tree, save artifacts, compare, and show only the best model's scatter."
-    "If there are not exist the refined database call the MatAgent"
+    "train LightGBM, Random Forest, Decision Tree, save artifacts, compare, and show only the best model's scatter. "
+    "If there is no refined database, call the MatDX_Agent."
 )
 system_prompt = f"You are the {name}. Your role: {role}. Context: {context}"
 
@@ -51,7 +51,7 @@ sample_agent = Agent(
     system_prompt=system_prompt,
 )
 
-REQUEST_HEADER = "[NEED_ACTION] MatDXAgent.refine_db"
+REQUEST_HEADER = "[NEED_ACTION] call_MatDX_agent"
 
 def _mk_refine_request_msg(tried_paths: list[str]) -> str:
     return "\n".join([
@@ -100,7 +100,6 @@ BASE_OUT_DIR = _abs("ML_OUTPUTS")
 os.makedirs(BASE_OUT_DIR, exist_ok=True)
 
 def _in_outdir(filename: str) -> str:
-    """Return absolute path inside ML_OUTPUTS folder."""
     return os.path.join(BASE_OUT_DIR, filename)
 
 # =====================
@@ -125,51 +124,6 @@ class MagpieFeaturizer(BaseEstimator, TransformerMixin):
         arr = np.array(feat, dtype=float)
         self._feature_names = self._featurizer.feature_labels()
         return arr
-
-# =====================
-# Tool A) Outlier (single pass)
-# =====================
-@sample_agent.tool_plain
-def analyze_and_clean_outliers(
-    csv_path: str | None = None,
-    target_col: str = "formation_energy_per_atom",
-    iqr_k: float = 1.5,
-    formula_col: str = "formula",
-    out_clean_csv: str = "MatDX_EF_Refined_clean.csv",
-    out_outliers_csv: str = "MatDX_EF_Refined_outliers.csv",
-) -> str:
-    try:
-        resolved = _resolve_csv(csv_path)
-    except FileNotFoundError as e:
-        return _mk_refine_request_msg(str(e).splitlines())
-
-    df = pd.read_csv(resolved)
-    if target_col not in df.columns or formula_col not in df.columns:
-        return f"[ERROR] Need columns '{formula_col}' and '{target_col}'. CSV={resolved}"
-
-    y = df[target_col].astype(float)
-    q1, q3 = np.percentile(y, [25, 75]); iqr = q3 - q1
-    lo, hi = q1 - iqr_k * iqr, q3 + iqr_k * iqr
-    mask = (y >= lo) & (y <= hi)
-
-    df_clean = df.loc[mask].reset_index(drop=True)
-    df_out   = df.loc[~mask].reset_index(drop=True)
-
-    clean_abs = _in_outdir(out_clean_csv)
-    out_abs   = _in_outdir(out_outliers_csv)
-    _ensure_parent_dir(clean_abs); df_clean.to_csv(clean_abs, index=False)
-    _ensure_parent_dir(out_abs);   df_out.to_csv(out_abs, index=False)
-
-    lines = [
-        f"[CSV] {resolved}",
-        f"[TARGET] {target_col}",
-        f"[IQR] Q1={q1:.6f}, Q3={q3:.6f}, IQR={iqr:.6f}, range=[{lo:.6f}, {hi:.6f}] (k={iqr_k})",
-        f"[ROWS] total={len(df)}, kept={len(df_clean)}, outliers={len(df_out)}",
-        f"[SAVED] clean -> {clean_abs}",
-        f"[SAVED] outliers -> {out_abs}",
-    ]
-    lines += ["[HEAD of outliers]", df_out[[formula_col, target_col]].head(5).to_string(index=False) if len(df_out) else "  (none)"]
-    return "\n".join(lines)
 
 # =====================
 # Helpers
@@ -197,13 +151,6 @@ def _save_scatter(y_true, y_pred, path: str, title: str):
     plt.xlabel("True"); plt.ylabel("Predicted"); plt.title(title)
     plt.legend(frameon=False); plt.tight_layout(); plt.savefig(spath, bbox_inches="tight"); plt.close()
     return spath
-
-def _show_png_inline(path: str):
-    try:
-        from IPython.display import display, Image as IPyImage
-        display(IPyImage(filename=_abs(path)))
-    except Exception:
-        pass
 
 def _fit_one_model(
     mt: str,
@@ -256,7 +203,7 @@ def _fit_one_model(
     }
 
 # =====================
-# Tool B) 3-model compare + best-only display
+# Tool B) 3-model compare
 # =====================
 @sample_agent.tool_plain
 def construct_and_compare_models_MatDX(
@@ -265,7 +212,6 @@ def construct_and_compare_models_MatDX(
     formula_col: str = "formula",
     random_state: int = 42,
     iqr_k: float = 1.5,
-    # LGBM
     lgbm_num_leaves: int = 63,
     lgbm_learning_rate: float = 0.05,
     lgbm_n_estimators: int = 2000,
@@ -274,15 +220,11 @@ def construct_and_compare_models_MatDX(
     lgbm_reg_lambda: float = 0.0,
     lgbm_reg_alpha: float = 0.0,
     lgbm_early_stopping_rounds: int = 100,
-    # RF
     rf_n_estimators: int = 500,
     rf_max_depth: Optional[int] = None,
-    # DT
     dt_max_depth: Optional[int] = None,
     dt_min_samples_split: int = 2,
     dt_min_samples_leaf: int = 1,
-    # outputs (kept for API compatibility; ignored for path root)
-    out_dir: str = ".",
     compare_csv: str = "model_comparison.csv",
     best_summary_txt: str = "best_model_summary.txt",
     show_best_plot: bool = True,
@@ -298,12 +240,11 @@ def construct_and_compare_models_MatDX(
         if col not in df.columns:
             return f"[ERROR] Missing '{col}' in CSV: {resolved}"
 
-    # Outlier removal (IQR)
+    # Outlier 제거
     y_raw = df[target_col].astype(float)
     q1, q3 = np.percentile(y_raw, [25, 75]); iqr = q3 - q1
     lo, hi = q1 - iqr_k * iqr, q3 + iqr_k * iqr
     mask = (y_raw >= lo) & (y_raw <= hi)
-    removed = int((~mask).sum()); kept = int(mask.sum())
     df = df.loc[mask].reset_index(drop=True)
 
     # Features
@@ -312,18 +253,14 @@ def construct_and_compare_models_MatDX(
     feat = MagpieFeaturizer(preset="magpie", ignore_errors=True)
     X_all = feat.transform(X_form)
 
-    # Split + impute
+    # Split
     X_tr, y_tr, X_val, y_val, X_te, y_te = _split_80_05_15(X_all, y, seed=random_state)
     imputer = SimpleImputer(strategy="median")
     X_tr_i = imputer.fit_transform(X_tr)
     X_val_i = imputer.transform(X_val)
     X_te_i  = imputer.transform(X_te)
 
-    # Output paths (force ML_OUTPUTS root)
-    out_dir_abs = BASE_OUT_DIR
-    os.makedirs(out_dir_abs, exist_ok=True)
     feat_labels = ElementProperty.from_preset("magpie").feature_labels()
-
     specs = {
         "lgbm": dict(
             lgbm_params=dict(
@@ -343,86 +280,32 @@ def construct_and_compare_models_MatDX(
     model_order = ["lgbm", "rf", "dt"] if LGBMRegressor is not None else ["rf", "dt"]
 
     rows_compare = []
-    per_model_summaries = []
-
     for mt in model_order:
         r = _fit_one_model(mt, X_tr_i, y_tr, X_val_i, y_val, X_te_i,
                            specs[mt]["lgbm_params"], specs[mt]["rf_params"], specs[mt]["dt_params"], random_state)
-
         m_val = r["val_metrics"]
         m_te  = _metrics(y_te, r["test_pred"])
 
-        # predictions CSV
-        pred_path = _in_outdir(f"{mt}_model_predictions.csv")
-        _ensure_parent_dir(pred_path)
-        pd.DataFrame({
-            "split": ["val"]*len(y_val) + ["test"]*len(y_te),
-            "y_true": np.concatenate([y_val, y_te]),
-            "y_pred": np.concatenate([r["model_final"].predict(X_val_i), r["test_pred"]]),
-        }).to_csv(pred_path, index=False)
-
-        # scatter
-        scat_path = _in_outdir(f"{mt}_model_scatter.png")
-        _save_scatter(y_te, r["test_pred"], scat_path, f"{mt.upper()} (Magpie) • Test (15%)")
-
-        # importances
-        imp_path = ""
-        if hasattr(r["model_final"], "feature_importances_"):
-            importances = r["model_final"].feature_importances_
-            order = np.argsort(importances)[::-1]
-            topk = min(50, len(importances))
-            top_rows = [{"rank": i+1, "feature": feat_labels[idx], "importance": float(importances[idx])}
-                        for i, idx in enumerate(order[:topk])]
-            imp_path = _in_outdir(f"{mt}_model_feature_importances_top.csv")
-            _ensure_parent_dir(imp_path)
-            pd.DataFrame(top_rows).to_csv(imp_path, index=False)
+        scat_path = _in_outdir(f"{mt}_scatter.png")
+        _save_scatter(y_te, r["test_pred"], scat_path, f"{mt.upper()} (Test 15%)")
 
         rows_compare.append({
-            "model": mt,
-            "val_RMSE": m_val["RMSE"], "val_MAE": m_val["MAE"], "val_R2": m_val["R2"],
-            "test_RMSE": m_te["RMSE"], "test_MAE": m_te["MAE"], "test_R2": m_te["R2"],
-            "scatter_path": scat_path, "pred_path": pred_path, "importance_path": imp_path,
+            "model": mt, "val_RMSE": m_val["RMSE"], "test_RMSE": m_te["RMSE"], "test_R2": m_te["R2"],
+            "scatter": scat_path
         })
-        per_model_summaries.append(f"- {mt.upper()} → Val RMSE={m_val['RMSE']:.4f}, Test RMSE={m_te['RMSE']:.4f}  (scatter: {scat_path})")
 
-    # comparison CSV
-    cmp_path = _in_outdir(compare_csv)
-    _ensure_parent_dir(cmp_path)
-    pd.DataFrame(rows_compare).to_csv(cmp_path, index=False)
-
-    # best summary
-    best_row = min(rows_compare, key=lambda d: (d["test_RMSE"], -d["test_R2"]))
-    best_txt = [
-        f"[CSV] {resolved}",
-        f"[ROWS] kept={kept}, removed_outliers={removed} (IQR_k={iqr_k})",
-        "[SPLIT] train=0.80, val=0.05, test=0.15",
-        "[PER-MODEL]",
-        *per_model_summaries,
-        "",
-        f"[BEST] {best_row['model'].upper()}  —  Test RMSE={best_row['test_RMSE']:.6f}, MAE={best_row['test_MAE']:.6f}, R²={best_row['test_R2']:.6f}",
-        f"       scatter: {best_row['scatter_path']}",
-        f"       preds  : {best_row['pred_path']}",
-        (f"       import : {best_row['importance_path']}" if best_row['importance_path'] else "       import : (n/a)"),
-        f"[COMPARISON CSV] {cmp_path}",
-    ]
-    best_path = _in_outdir(best_summary_txt)
-    _ensure_parent_dir(best_path)
-    with open(best_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(best_txt))
-
-    print("\n".join(best_txt))
-    if show_best_plot:
-        _show_png_inline(best_row["scatter_path"])
-    return "\n".join(best_txt)
+    best_row = min(rows_compare, key=lambda d: d["test_RMSE"])
+    return f"[BEST] {best_row}"
 
 # =====================
-# Agent caller
+# Agent caller (MatDXAgent 라우팅 반영)
 # =====================
 async def call_ML_agent(ctx: RunContext[AgentState], message2agent: str):
-
+    
     f"""
     this agent can:
     - build and evaluate a composition-based regressor on a **refined** CSV (MatDX_EF_Refined.csv).
+    - If there is no refined database, call the MatDX_Agent.
     - generate Magpie composition features, split 80/20, train (LightGBM/RF/DT).
     - report RMSE/MAE/R² and save a y_true vs y_pred scatter, predictions CSV, and top feature importances CSV.
     - compare the three model and recommend the best model
@@ -433,17 +316,23 @@ async def call_ML_agent(ctx: RunContext[AgentState], message2agent: str):
     - If the user wants information about the MatDX DB (columns, shape, previews, FE stats), use **MatDXAgent** in 'load' mode to read and report.
     - If the user needs to prepare data for ML — or if the refined CSV doesn't exist — use **MatDXAgent** in 'refine' mode to create `MatDX_EF_Refined.csv`, report the saved path, and then re-run this **MLAgent**.
     """
+
     agent_name = name
     deps = ctx.deps
-    logger.info(f"[{agent_name}] Message2Agent: {message2agent}ㅤ")
-    user_prompt = f"Current Task of your role: {message2agent}"
-    result = await sample_agent.run(user_prompt, deps=deps)
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+    result = await sample_agent.run(message2agent, deps=deps)
     output = result.output
+
+    # ✅ Refined CSV 없으면 MatDXAgent 호출
+    if isinstance(output.result, str) and output.result.startswith(REQUEST_HEADER):
+        logger.info(f"[{agent_name}] Routed to MatDXAgent due to missing refined CSV")
+        from chemdx_agent.subagents.matdx_agent import call_MatDX_agent
+        return await call_MatDX_agent(ctx, "Load the MatDX DB and refine it for ML (save MatDX_EF_Refined.csv)")
+
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
-    logger.info(f"[{agent_name}] Action: {output.action}ㅤ")
-    list_tool_log = make_tool_message(result)
-    for log in list_tool_log:
+    logger.info(f"[{agent_name}] Action: {output.action}")
+    for log in make_tool_message(result):
         logger.info(log)
-    logger.info(f"[{agent_name}] Result: {output.result}ㅤ")
+    logger.info(f"[{agent_name}] Result: {output.result}")
     return output
