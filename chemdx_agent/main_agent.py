@@ -26,10 +26,10 @@ main_agent = Agent(
 
 # connect main agent with subagent
 main_agent.tool(call_database_agent)
-main_agent.tool(call_dft_poscar_agent)
+main_agent.tool(call_poscar_agent)
 main_agent.tool(call_recommend_agent)
 main_agent.tool(call_viz_agent)
-main_agent.tool(call_materials_project_agent)
+main_agent.tool(call_mp_agent)
 main_agent.tool(call_phosphor_lookup_agent)
 main_agent.tool(call_sample_agent)
 main_agent.tool(call_general_agent)

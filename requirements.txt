@@ -5,3 +5,8 @@ dotenv
 tiktoken
 pandas
 requests
+matplotlib
+numpy
+mp-api
+pymatgen
+seaborn 
