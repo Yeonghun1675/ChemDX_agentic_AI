@@ -35,6 +35,7 @@ main_agent.tool(call_phosphor_data_research_agent)
 main_agent.tool(call_trend_agent)
 main_agent.tool(call_matdx_trend_agent)
 main_agent.tool(call_ML_agent)
+main_agent.tool(call_MatDX_agent)
 
 
 async def run_main_agent(message: str, deps: Optional[AgentState] = None):
