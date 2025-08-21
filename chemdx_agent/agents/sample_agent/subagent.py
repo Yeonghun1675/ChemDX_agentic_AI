@@ -3,6 +3,8 @@ from pydantic_ai import Agent, RunContext
 
 from chemdx_agent.schema import AgentState, Result
 from chemdx_agent.logger import logger
+from chemdx_agent.utils import make_tool_message
+
 
 name = "SampleAgent"
 role = "description of sample"
@@ -71,10 +73,15 @@ async def call_sample_agent(ctx: RunContext[AgentState], message2agent: str):
     )
 
     output = result.output
+    
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
-
     logger.info(f"[{agent_name}] Action: {output.action}")
+
+    list_tool_log = make_tool_message(result)
+    for log in list_tool_log:
+        logger.info(log)
+    
     logger.info(f"[{agent_name}] Result: {output.result}")
 
     return output
