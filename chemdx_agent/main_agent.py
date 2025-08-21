@@ -25,9 +25,14 @@ main_agent = Agent(
 )
 
 # connect main agent with subagent
+main_agent.tool(call_database_agent)
+main_agent.tool(call_dft_poscar_agent)
+main_agent.tool(call_recommend_agent)
+main_agent.tool(call_viz_agent)
+main_agent.tool(call_materials_project_agent)
+main_agent.tool(call_phosphor_lookup_agent)
 main_agent.tool(call_sample_agent)
-#main_agent.tool(call_phosphor_lookup_agent)
-
+main_agent.tool(call_general_agent)
 
 async def run_main_agent(message: str, deps: Optional[AgentState] = None):
     if deps is None:
