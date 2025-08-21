@@ -1,6 +1,7 @@
 from pyarrow import list_
 from pydantic_ai import Agent
 from pydantic_ai.usage import UsageLimits
+from typing import Optional
 
 from chemdx_agent.schema import AgentState, AgentInput, FinalAnswer
 from chemdx_agent.logger import logger
@@ -31,17 +32,18 @@ main_agent.tool(call_phosphor_data_research_agent)
 main_agent.tool(call_trend_agent)
 
 
-async def run_main_agent(message: str):
+async def run_main_agent(message: str, deps=Optional[AgentState]):
+    if deps is None:
+        deps = AgentState()
+
+    deps.main_task = message
+
     logger.info(f"[Question] {message}")
     result = await main_agent.run(
         message,
-        deps=AgentState(main_task=message),
-        usage_limits=UsageLimits(
-            request_limit=None,
-            input_tokens_limit=None,
-            output_tokens_limit=None,
-        ),
+        deps=deps,
     )
+    
     output = result.output
     list_tool_log = make_tool_message(result)
     for log in list_tool_log:
