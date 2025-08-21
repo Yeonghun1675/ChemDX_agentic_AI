@@ -3,7 +3,6 @@ from chemdx_agent.schema import AgentState, Result
 from chemdx_agent.logger import logger
 from chemdx_agent.utils import make_tool_message
 from chemdx_agent.agents.MatDX_trend_agent.subagent import call_matdx_trend_agent
-from chemdx_agent.agents.estm_trend_agent.subagent import call_estm_trend_agent
 from chemdx_agent.agents.Phosphor_trend_agent.subagent import call_phosphor_trend_agent
 
 
@@ -15,7 +14,6 @@ router_guidelines = (
     "You are the Trend router agent for ChemDX.\n"
     "Route the user's request to one of the following subagents based on dataset/intent:\n"
     "- MatDXTrendAgent: Trends on formation energy/materials in MatDX_EF.csv.\n"
-    "- ESTMTrendAgent: Thermoelectric trends (Seebeck, conductivity, thermal conductivity, power factor, ZT).\n"
     "- PhosphorTrendAgent: Optical phosphor dataset-level trends (emission, CIE, decay, dopant, host).\n"
     "Guidelines:\n"
     "- If the user mentions ZT, Seebeck, power factor or TE properties, use ESTMTrendAgent.\n"
@@ -51,7 +49,6 @@ Working Memory: {working_memory}
 
 # Register downstream subagents
 trend_agent.tool(call_matdx_trend_agent)
-trend_agent.tool(call_estm_trend_agent)
 trend_agent.tool(call_phosphor_trend_agent)
 
 
