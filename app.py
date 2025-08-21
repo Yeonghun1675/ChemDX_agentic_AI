@@ -12,16 +12,27 @@ from chemdx_agent.utils import split_line_to_agent_and_message
 agent_color = {
     'MainAgent': '#f0f2f6',
     'SampleAgent': '#e6f3ff',
-    'Message2Agent': '#e6ffe6',
-    'ToolAgent': '#fff2e6',
-    'Error': '#ffe6e6',
-    'Success': '#e6ffe6',
-    'Warning': '#fff2e6',
+    'ColorTrendAgent': '#e6ffe6',
+    'PhosphorDataResearchAgent': '#fff2e6',
+    'MatDXTrendAgent': '#ffe6e6',
+    'ESTMTrendAgent': '#ffe6e6',
+    'PhosphorTrendAgent': '#ffe6e6',
+    'PhosphorLookupAgent': '#ffe6e6',
+    'RecommendAgent': '#ffe6e6',
+    'TrendAgent': '#ffe6e6',
 }
 
 agent_emoji = {
     "MainAgent": "💻",
     "SampleAgent": "🔍",
+    'ColorTrendAgent': '🔍',
+    'PhosphorDataResearchAgent': '🔍',
+    'MatDXTrendAgent': '🔍',
+    'ESTMTrendAgent': '🔍',
+    'PhosphorTrendAgent': '🔍',
+    'PhosphorLookupAgent': '🔍',
+    'RecommendAgent': '🔍',
+    'TrendAgent': '🔍',
 }
 
 

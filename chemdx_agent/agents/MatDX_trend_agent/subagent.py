@@ -7,6 +7,7 @@ import pandas as pd
 from pydantic_ai import Agent, RunContext
 from chemdx_agent.schema import AgentState, Result
 from chemdx_agent.logger import logger
+from chemdx_agent.utils import make_tool_message
 
 
 name = "MatDXTrendAgent"
@@ -32,6 +33,14 @@ matdx_agent = Agent(
     model_settings={"temperature": 0.0, "parallel_tool_calls": False},
     system_prompt=system_prompt,
 )
+
+@matdx_agent.system_prompt(dynamic=True)
+def dynamic_system_prompt(ctx: RunContext[AgentState]) -> str:
+    deps = ctx.deps
+    return working_memory_prompt.format(
+        main_goal = deps.main_task,
+        working_memory = deps.working_memory_description,
+    )
 
 _df_cache: Optional[pd.DataFrame] = None
 _path_cache: Optional[str] = None
@@ -136,11 +145,18 @@ def analyze_trend(x_feature: str, y_feature: str, file_path: Optional[str] = Non
 async def call_matdx_trend_agent(ctx: RunContext[AgentState], message2agent: str):
     deps = ctx.deps
     logger.info(f"[MatDXTrendAgent] Message2Agent: {message2agent}")
-    result = await matdx_agent.run(message2agent, deps=deps)
+    
+    user_prompt = f"Current Task of your role: {message2agent}"
+    result = await matdx_agent.run(user_prompt, deps=deps)
     output = result.output
     deps.add_working_memory(name, message2agent)
     deps.increment_step()
     logger.info(f"[MatDXTrendAgent] Action: {output.action}")
+    
+    list_tool_log = make_tool_message(result)
+    for log in list_tool_log:
+        logger.info(log)
+    
     logger.info(f"[MatDXTrendAgent] Result: {output.result}")
     return output
 
