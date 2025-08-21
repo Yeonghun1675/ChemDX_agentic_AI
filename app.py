@@ -25,6 +25,10 @@ agent_color = {
     'DatabaseAgent': '#d2e9e1',
     'MatDXAgent': '#EDF6F9',
     'MLAgent': '#83C5BE',
+    "DftPoscarAgent": "#f5d6eb",   
+    "MatProjLookupAgent": "#d8c8f0", 
+    "TmeDatabaseAgent": "#c6e8f7",  
+    "DataVisualisationAgent": "#c9f2d0", 
 }
 
 agent_emoji = {
@@ -42,7 +46,10 @@ agent_emoji = {
     'DatabaseAgent': '',
     'MatDXAgent': '📁',
     'MLAgent': '❔',
-
+    'DftPoscarAgent': '🔧',
+    'MatProjLookupAgent': '🔎',
+    'TmeDatabaseAgent': '📊',
+    'DataVisualisationAgent': '📊',
 }
 
 
@@ -96,7 +103,13 @@ def _display_line(line, displayed_lines):
         is_gen_images = re.findall(r"'.+\.png'", message)
         if is_gen_images:
             for image_path in is_gen_images:
-                st.image(image_path)
+                # 따옴표 제거
+                clean_path = image_path.strip("'")
+                if os.path.exists(clean_path):
+                    try:
+                        st.image(clean_path)
+                    except Exception as e:
+                        st.error(f"이미지 로드 실패: {clean_path}")
 
         return True
     except Exception as e:
