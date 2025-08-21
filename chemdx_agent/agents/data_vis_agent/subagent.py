@@ -203,7 +203,7 @@ async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
     agent_name = "VisualisationAgent"
     deps = ctx.deps
 
-    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}ㅤ")
 
     user_prompt = f"Current Task of your role: {message2agent}"
 
@@ -215,7 +215,7 @@ async def call_viz_agent(ctx: RunContext[AgentState], message2agent: str):
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
 
-    logger.info(f"[{agent_name}] Action: {getattr(output, 'action', 'N/A')}")
-    logger.info(f"[{agent_name}] Result: {getattr(output, 'result', 'N/A')}")
+    logger.info(f"[{agent_name}] Action: {getattr(output, 'action', 'N/A')}ㅤ")
+    logger.info(f"[{agent_name}] Result: {getattr(output, 'result', 'N/A')}ㅤ")
 
     return output

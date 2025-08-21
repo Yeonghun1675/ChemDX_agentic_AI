@@ -144,20 +144,20 @@ def analyze_trend(x_feature: str, y_feature: str, file_path: Optional[str] = Non
 
 async def call_matdx_trend_agent(ctx: RunContext[AgentState], message2agent: str):
     deps = ctx.deps
-    logger.info(f"[MatDXTrendAgent] Message2Agent: {message2agent}")
+    logger.info(f"[MatDXTrendAgent] Message2Agent: {message2agent}ㅤ")
     
     user_prompt = f"Current Task of your role: {message2agent}"
     result = await matdx_agent.run(user_prompt, deps=deps)
     output = result.output
     deps.add_working_memory(name, message2agent)
     deps.increment_step()
-    logger.info(f"[MatDXTrendAgent] Action: {output.action}")
+    logger.info(f"[MatDXTrendAgent] Action: {output.action}ㅤ")
     
     list_tool_log = make_tool_message(result)
     for log in list_tool_log:
         logger.info(log)
     
-    logger.info(f"[MatDXTrendAgent] Result: {output.result}")
+    logger.info(f"[MatDXTrendAgent] Result: {output.result}ㅤ")
     return output
 
 

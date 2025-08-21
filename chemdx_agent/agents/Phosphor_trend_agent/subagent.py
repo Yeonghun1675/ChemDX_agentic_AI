@@ -155,7 +155,7 @@ def analyze_trend(x_feature: str, y_feature: str, file_path: Optional[str] = Non
 
 async def call_phosphor_trend_agent(ctx: RunContext[AgentState], message2agent: str):
     deps = ctx.deps
-    logger.info(f"[PhosphorTrendAgent] Message2Agent: {message2agent}")
+    logger.info(f"[PhosphorTrendAgent] Message2Agent: {message2agent}ㅤ")
     
     user_prompt = f"Current Task of your role: {message2agent}"
     result = await phosphor_trend_agent.run(user_prompt, deps=deps)
@@ -164,13 +164,13 @@ async def call_phosphor_trend_agent(ctx: RunContext[AgentState], message2agent: 
     deps.increment_step()
     deps.add_working_memory(name, message2agent)
     deps.increment_step()
-    logger.info(f"[PhosphorTrendAgent] Action: {output.action}")
+    logger.info(f"[PhosphorTrendAgent] Action: {output.action}ㅤ")
     
     list_tool_log = make_tool_message(result)
     for log in list_tool_log:
         logger.info(log)
     
-    logger.info(f"[PhosphorTrendAgent] Result: {output.result}")
+    logger.info(f"[PhosphorTrendAgent] Result: {output.result}ㅤ")
     return output
 
 

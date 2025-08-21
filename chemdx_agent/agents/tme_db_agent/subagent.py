@@ -569,7 +569,7 @@ async def call_database_agent(ctx: RunContext[AgentState], message2agent: str):
     agent_name = "DatabaseAgent"
     deps = ctx.deps
 
-    logger.info(f"[{agent_name}] Message2Agent: {message2agent}")
+    logger.info(f"[{agent_name}] Message2Agent: {message2agent}ㅤ")
 
     user_prompt = f"Current Task of your role: {message2agent}"
 
@@ -579,7 +579,7 @@ async def call_database_agent(ctx: RunContext[AgentState], message2agent: str):
     deps.add_working_memory(agent_name, message2agent)
     deps.increment_step()
 
-    logger.info(f"[{agent_name}] Action: {output.action}")
-    logger.info(f"[{agent_name}] Result: {output.result}")
+    logger.info(f"[{agent_name}] Action: {output.action}ㅤ")
+    logger.info(f"[{agent_name}] Result: {output.result}ㅤ")
 
     return output
