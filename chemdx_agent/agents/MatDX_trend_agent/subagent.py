@@ -76,9 +76,30 @@ def _get_numeric(val) -> Optional[float]:
 @matdx_agent.tool_plain
 def load_matdx_db(file_path: Optional[str] = None) -> str:
     global _df_cache, _path_cache
-    path = file_path or "chemdx_agent/databases/MatDX_EF.csv"
-    if not os.path.exists(path):
-        return f"Error: Not found: '{path}'"
+    # Resolve candidate paths in priority order
+    candidates: List[str] = []
+    if file_path:
+        candidates.append(file_path)
+    # default relative within package
+    candidates.append("chemdx_agent/databases/MatDX_EF.csv")
+    # absolute path relative to this file
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates.append(os.path.abspath(os.path.join(here, "../../databases/MatDX_EF.csv")))
+    # project root guess from CWD
+    candidates.append(os.path.abspath("chemdx_agent/databases/MatDX_EF.csv"))
+
+    path: Optional[str] = None
+    for cand in candidates:
+        try:
+            if os.path.exists(cand):
+                path = cand
+                break
+        except Exception:
+            continue
+    if not path:
+        # Return the first attempted path for clarity
+        first = candidates[0] if candidates else "MatDX_EF.csv"
+        return f"Error: Not found: '{first}'"
     try:
         _df_cache = pd.read_csv(path)
         _path_cache = path
