@@ -25,5 +25,25 @@
 
 ![](./figures/system.gif)
 
+
+
+## How to install
+
+```bash
+$ git clone https://github.com/Yeonghun1675/ChemDX_agentic_AI.git
+$ cd ChemDX_agentic_AI
+$ pip install -e .
+```
+
+
+
+## How to use it
+
+```bash
+$ streamlit run app.py
+```
+
+
+
 ## Example of ChemDX agent
 
