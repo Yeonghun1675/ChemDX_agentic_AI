@@ -13,7 +13,7 @@ ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 - Build a system that can answer diverse user queries by integrating multiple tools
 - Create an Agentic AI capable of handling **three challenging questions** (for each participant)
 
-Authors
+**Authors**
 
 - Yeonghun Kang
 - Anastasia Arkhipenkova
@@ -29,7 +29,9 @@ Authors
 - The **Main Agent** manages the Sub-Agents, decomposing a problem into smaller, specific tasks and creating the optimal plan to solve them.
 - Each **Sub-Agent** is assigned a specialized role, leveraging various tools or communicating with other Sub-Agents to accomplish its specific tasks.
 
-![](./figures/structure.png)
+<img src="figures/structure.png" alt="Test" width="90%">
+
+
 
 
 
@@ -80,9 +82,7 @@ $ streamlit run app.py
 Does the MatDX EF database contain polymorphs? If so, provide one example along with their polymorphic structures. Among them, identify the most stable structure (i.e., the one with the lowest formation energy) and export it as a POSCAR file based on MatDX EF database.
 ```
 
-<video src="./figures/test_sp.mp4" controls width="600">
-  Your browser does not support the video tag.
-</video>
+![](./figures/test_sp.gif)
 
 ### Example 2
 
@@ -92,7 +92,4 @@ Does the MatDX EF database contain polymorphs? If so, provide one example along 
 - Finally, please summarize the correlation/trend of Emission vs color.
 ```
 
-<video src="./figures/test_park.mp4" controls width="600">
-  Your browser does not support the video tag.
-</video>
-
+![](./figures/test_park.gif)
