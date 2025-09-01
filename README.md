@@ -6,19 +6,14 @@ ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 
 # ChemDX Agentic AI
 
+![](./figures/ChemDX_Figures.png)
+
 **Main Goal**
 
 - Develop **Agentic AI** to leverage the ChemDX database
 - Solve problems efficiently and accurately through a **multi-agent system** and a **working-memory** system
 - Build a system that can answer diverse user queries by integrating multiple tools
 - Create an Agentic AI capable of handling **three challenging questions** (for each participant)
-
-**Authors**
-
-- Yeonghun Kang
-- Anastasia Arkhipenkova
-- Bogeun Park
-- SeungPyo Kang
 
 
 
@@ -29,7 +24,9 @@ ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 - The **Main Agent** manages the Sub-Agents, decomposing a problem into smaller, specific tasks and creating the optimal plan to solve them.
 - Each **Sub-Agent** is assigned a specialized role, leveraging various tools or communicating with other Sub-Agents to accomplish its specific tasks.
 
-<img src="figures/structure.png" alt="Test" width="90%">
+<div style="text-align : center;"><img src="figures/structure.png" alt="Test" width="88%"></div>
+
+
 
 
 
@@ -78,13 +75,31 @@ $ streamlit run app.py
 
 ### Example 1
 
+Quesstion
+
 ```markdown
 Does the MatDX EF database contain polymorphs? If so, provide one example along with their polymorphic structures. Among them, identify the most stable structure (i.e., the one with the lowest formation energy) and export it as a POSCAR file based on MatDX EF database.
 ```
 
+Final Answer 
+
+```mark
+The MatDX EF database contains polymorphs. For example, "Ag4Al4" has 7 polymorphic structures with different spacegroups: C2/m, Cccm, I4/mmm, P1, P4/nmm, and Pmm2. The most stable structure is the one with space group C2/m, having the lowest formation energy of -0.0533 eV/atom. The POSCAR file for this stsructure has been generated and is available for download.
+```
+
+Evaluation
+
+```markdown
+The task was executed successfully. The database was checked for polymorphs, an example was provided, the most stable structure was identified, and the POSCAR file was generated and made available for download.
+```
+
+Procedure
+
 ![](./figures/test_sp.gif)
 
 ### Example 2
+
+Question
 
 ```markdown
 - Please recommend blue phosphor candidates that meet the conditions of Emission max ∈ [360, 420], Decay time ≤ 100, and QE ≥ 80. Please tell me the properties of the recommended materials.
@@ -92,4 +107,64 @@ Does the MatDX EF database contain polymorphs? If so, provide one example along 
 - Finally, please summarize the correlation/trend of Emission vs color.
 ```
 
+Final Answer
+
+```mark
+1. Blue Phosphor Candidates:
+- RbCaGdP2O8: Ce doped at 0.1 concentration, Emission max: 408 nm, Decay time: 45 ns, QE: 83%
+- Ba2Y1.8P2O12Si: Ce doped at 0.14 concentration, Emission max: 409 nm, Decay time: 42 ns,
+QE: 84%
+- KSrGdP208: Ce doped at 0.04 concentration, Emission max: 370 nm, Decay time: 63 ns, QE:
+96%
+- KSrGdP208: Ce doped at 0.04 concentration, Emission max: 370 nm, Decay time: 47 ns, QE:
+90%
+- KNaCa2P208Na0.04: Ce doped at 0.04 concentration, Emission max: 367 nm, Decay time: 47 ns, QE: 89%
+2. Eu Co-doping in Ba2Bi0.95V3011:
+- The emission maximum remains stable at 619 nm across varying Eu concentrations, with the color consistently red, indicating no significant shift in emission or chromaticity with changes in Eu concentration.
+3. Correlation/Trend of Emission vs Color:
+- There is a strong positive correlation between Emission max and the CIE x coordinate, indicating a shift towards the red end of the spectrum as the emission wavelength increases.
+The correlation with the CIE y coordinate is weak, suggesting less consistent effects on the vertical position in the ClE color space.
+```
+
+Evaluation
+
+```markdown
+The task was executed well, providing detailed information on blue phosphor candidates, the effect of Eu co-doping in Ba2Bi0.95V3011, and the correlation between emission and color. The results are coherent and meet the specified conditions.
+```
+
+Procedure
+
 ![](./figures/test_park.gif)
+
+### Example 3
+
+Question
+
+```mark
+Compare Cu2SnS3 and Cu3SbS4 based on their ZT and determine which is the better performer at 500K.  Compare and plot the ZT trends using matplotlib. For the best performing material generate a POSCAR file.
+```
+
+Final Answer
+
+```mark
+The ZT values for Cu2SnS3 and CuSbS were compared as a function of temperature. Cu3SbS4 was found to be the better performer at 500K with a ZT of 0.05, compared to Cu2SnS3's ZT of 0.01. A POSCAR file has been generated for Cu3SbS4 and is available for download.
+```
+
+Evaluation
+
+```mark
+The task was executed successfully. The ZT values were compared, the better performing material at 500K was identified, and the POSCAR file for Cu3SbS4 was generated as requested.
+```
+
+Procedure
+
+![](./figures/test_ana.gif)
+
+**Authors**
+
+![](./figures/authors.jpeg)
+
+- Yeonghun Kang
+- Anastasia Arkhipenkova
+- Bogeun Park
+- SeungPyo Kang
