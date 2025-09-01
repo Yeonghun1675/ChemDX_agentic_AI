@@ -4,9 +4,9 @@
 
 ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 
-![](./figures/ChemDX_Figures.png)
-
 # ChemDX Agentic AI
+
+![](./figures/ChemDX_Figures.png)
 
 **Main Goal**
 
@@ -14,13 +14,6 @@ ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 - Solve problems efficiently and accurately through a **multi-agent system** and a **working-memory** system
 - Build a system that can answer diverse user queries by integrating multiple tools
 - Create an Agentic AI capable of handling **three challenging questions** (for each participant)
-
-**Authors**
-
-- Yeonghun Kang
-- Anastasia Arkhipenkova
-- Bogeun Park
-- SeungPyo Kang
 
 
 
@@ -84,13 +77,15 @@ $ streamlit run app.py
 
 Quesstion
 
-| Does the MatDX EF database contain polymorphs? If so, provide one example along with their polymorphic structures. Among them, identify the most stable structure (i.e., the one with the lowest formation energy) and export it as a POSCAR file based on MatDX EF database. |
-| ------------------------------------------------------------ |
+```markdown
+Does the MatDX EF database contain polymorphs? If so, provide one example along with their polymorphic structures. Among them, identify the most stable structure (i.e., the one with the lowest formation energy) and export it as a POSCAR file based on MatDX EF database.
+```
 
 Final Answer 
 
-| The MatDX EF database contains polymorphs. For example, "Ag4Al4" has 7 polymorphic structures with different spacegroups: C2/m, Cccm, I4/mmm, P1, P4/nmm, and Pmm2. The most stable structure is the one with space group C2/m, having the lowest formation energy of -0.0533 eV/atom. The POSCAR file for this stsructure has been generated and is available for download. |
-| ------------------------------------------------------------ |
+```mark
+The MatDX EF database contains polymorphs. For example, "Ag4Al4" has 7 polymorphic structures with different spacegroups: C2/m, Cccm, I4/mmm, P1, P4/nmm, and Pmm2. The most stable structure is the one with space group C2/m, having the lowest formation energy of -0.0533 eV/atom. The POSCAR file for this stsructure has been generated and is available for download.
+```
 
 Evaluation
 
@@ -125,16 +120,51 @@ QE: 84%
 90%
 - KNaCa2P208Na0.04: Ce doped at 0.04 concentration, Emission max: 367 nm, Decay time: 47 ns, QE: 89%
 2. Eu Co-doping in Ba2Bi0.95V3011:
-• The emission maximum remains stable at 619 nm across varying Eu concentrations, with the color consistently red, indicating no significant shift in emission or chromaticity with changes in Eu concentration.
+- The emission maximum remains stable at 619 nm across varying Eu concentrations, with the color consistently red, indicating no significant shift in emission or chromaticity with changes in Eu concentration.
 3. Correlation/Trend of Emission vs Color:
-• There is a strong positive correlation between Emission max and the CIE x coordinate, indicating a shift towards the red end of the spectrum as the emission wavelength increases.
+- There is a strong positive correlation between Emission max and the CIE x coordinate, indicating a shift towards the red end of the spectrum as the emission wavelength increases.
 The correlation with the CIE y coordinate is weak, suggesting less consistent effects on the vertical position in the ClE color space.
 ```
 
+Evaluation
 
-
-
+```markdown
+The task was executed well, providing detailed information on blue phosphor candidates, the effect of Eu co-doping in Ba2Bi0.95V3011, and the correlation between emission and color. The results are coherent and meet the specified conditions.
+```
 
 Procedure
 
 ![](./figures/test_park.gif)
+
+### Example 3
+
+Question
+
+```mark
+Compare Cu2SnS3 and Cu3SbS4 based on their ZT and determine which is the better performer at 500K.  Compare and plot the ZT trends using matplotlib. For the best performing material generate a POSCAR file.
+```
+
+Final Answer
+
+```mark
+The ZT values for Cu2SnS3 and CuSbS were compared as a function of temperature. Cu3SbS4 was found to be the better performer at 500K with a ZT of 0.05, compared to Cu2SnS3's ZT of 0.01. A POSCAR file has been generated for Cu3SbS4 and is available for download.
+```
+
+Evaluation
+
+```mark
+The task was executed successfully. The ZT values were compared, the better performing material at 500K was identified, and the POSCAR file for Cu3SbS4 was generated as requested.
+```
+
+Procedure
+
+![](./figures/test_ana.gif)
+
+**Authors**
+
+![](./figures/authors.jpeg)
+
+- Yeonghun Kang
+- Anastasia Arkhipenkova
+- Bogeun Park
+- SeungPyo Kang
