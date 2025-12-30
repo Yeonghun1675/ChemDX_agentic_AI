@@ -1,5 +1,3 @@
-
-
 ## KRICT ChemDX Hackathon 2025
 
 ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
@@ -8,7 +6,33 @@ ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 
 ![](./figures/ChemDX_Figures.png)
 
-**Main Goal**
+## Overview
+
+ChemDX Agentic AI is a modular, agent-based artificial intelligence framework developed for the KRICT ChemDX Hackathon 2025, designed to support data-driven materials research. The project demonstrates how multiple specialized agents, each connected to verious ChemDX databases (MatDX EF, LitDX_TE, and Phosphor DB) and tools, can be orchestrated to answer complex materials science questions that span materials discovery, structure generation, electronic structure preparation, trend analysis, and visualization.
+
+Rather than relying on a single monolithic model, ChemDX Agentic AI decomposes materials-related queries into structured subtasks handled by dedicated agents. This agentic design enables seamless integration of experimental databases, computational materials data, visualization tools, and first-principles inputs, allowing the system to flexibly address heterogeneous materials science problems within a unified workflow.
+
+
+
+## Key Methods and Approaches
+ChemDX Agentic AI is built on prompt engineering to control agent behavior without modifying model weights. Each Sub-Agent is initialized with a structured system prompt that defines its role and context, while the user prompt specifies the overall goal and task. A shared working memory is used to accumulate intermediate results, allowing subsequent agents to reuse prior information and perform tasks more efficiently.
+
+The framework adopts a multi-agent architecture in which a Main Agent decomposes the task and assigns subtasks to ChemDX-specific Sub-Agents and tools, including database retrieval, structure generation, trend analysis, visualization, and DFT input generation. Sub-Agent outputs are integrated by the Main Agent to produce the final response, enabling flexible and coherent problem solving across diverse materials science workflows.
+
+
+
+## Key Results and Contributions
+
+During the Hackathon, ChemDX Agentic AI demonstrated its effectiveness by successfully addressing three conceptually distinct materials science problems using a unified agentic workflow. Despite differences in data type, target properties, and analytical depth, all problems were solved by dynamically orchestrating multiple specialized agents and external tools within a single framework, highlighting the flexibility and generality of the proposed approach.
+
+Across these tasks, the system combined database-driven materials retrieval, quantitative comparison, trend analysis, visualization, and structure generation without manual intervention. Sub-agents were selectively activated depending on the problem context, allowing the framework to adaptively integrate phosphor databases, thermoelectric literature data, plotting tools, and DFT input generation pipelines. This demonstrated that heterogeneous materials research questions can be handled coherently through agent-level task decomposition rather than task-specific pipelines.
+
+Overall, the results illustrate that ChemDX Agentic AI provides a practical and extensible solution for solving diverse materials science problems through coordinated sub-agent collaboration. The project highlights how agent-based AI systems can unify materials databases, analytical tools, and computational workflows, offering a scalable foundation for AI-assisted materials discovery and evaluation.
+
+
+
+
+## Main Goal
 
 - Develop **Agentic AI** to leverage the ChemDX database
 - Solve problems efficiently and accurately through a **multi-agent system** and a **working-memory** system
@@ -75,27 +99,27 @@ $ streamlit run app.py
 
 ### Example 1
 
-Quesstion
-
-```markdown
-Does the MatDX EF database contain polymorphs? If so, provide one example along with their polymorphic structures. Among them, identify the most stable structure (i.e., the one with the lowest formation energy) and export it as a POSCAR file based on MatDX EF database.
-```
-
-Final Answer 
+Question
 
 ```mark
-The MatDX EF database contains polymorphs. For example, "Ag4Al4" has 7 polymorphic structures with different spacegroups: C2/m, Cccm, I4/mmm, P1, P4/nmm, and Pmm2. The most stable structure is the one with space group C2/m, having the lowest formation energy of -0.0533 eV/atom. The POSCAR file for this stsructure has been generated and is available for download.
+Compare Cu2SnS3 and Cu3SbS4 based on their ZT and determine which is the better performer at 500K.  Compare and plot the ZT trends using matplotlib. For the best performing material generate a POSCAR file.
+```
+
+Final Answer
+
+```mark
+The ZT values for Cu2SnS3 and CuSbS were compared as a function of temperature. Cu3SbS4 was found to be the better performer at 500K with a ZT of 0.05, compared to Cu2SnS3's ZT of 0.01. A POSCAR file has been generated for Cu3SbS4 and is available for download.
 ```
 
 Evaluation
 
-```markdown
-The task was executed successfully. The database was checked for polymorphs, an example was provided, the most stable structure was identified, and the POSCAR file was generated and made available for download.
+```mark
+The task was executed successfully. The ZT values were compared, the better performing material at 500K was identified, and the POSCAR file for Cu3SbS4 was generated as requested.
 ```
 
 Procedure
 
-![](./figures/test_sp.gif)
+![](./figures/test_ana.gif)
 
 ### Example 2
 
@@ -138,33 +162,39 @@ Procedure
 
 ### Example 3
 
-Question
+Quesstion
 
-```mark
-Compare Cu2SnS3 and Cu3SbS4 based on their ZT and determine which is the better performer at 500K.  Compare and plot the ZT trends using matplotlib. For the best performing material generate a POSCAR file.
+```markdown
+Does the MatDX EF database contain polymorphs? If so, provide one example along with their polymorphic structures. Among them, identify the most stable structure (i.e., the one with the lowest formation energy) and export it as a POSCAR file based on MatDX EF database.
 ```
 
-Final Answer
+Final Answer 
 
 ```mark
-The ZT values for Cu2SnS3 and CuSbS were compared as a function of temperature. Cu3SbS4 was found to be the better performer at 500K with a ZT of 0.05, compared to Cu2SnS3's ZT of 0.01. A POSCAR file has been generated for Cu3SbS4 and is available for download.
+The MatDX EF database contains polymorphs. For example, "Ag4Al4" has 7 polymorphic structures with different spacegroups: C2/m, Cccm, I4/mmm, P1, P4/nmm, and Pmm2. The most stable structure is the one with space group C2/m, having the lowest formation energy of -0.0533 eV/atom. The POSCAR file for this stsructure has been generated and is available for download.
 ```
 
 Evaluation
 
-```mark
-The task was executed successfully. The ZT values were compared, the better performing material at 500K was identified, and the POSCAR file for Cu3SbS4 was generated as requested.
+```markdown
+The task was executed successfully. The database was checked for polymorphs, an example was provided, the most stable structure was identified, and the POSCAR file was generated and made available for download.
 ```
 
 Procedure
 
-![](./figures/test_ana.gif)
+![](./figures/test_sp.gif)
+
+
+
+## Reproducibility and Limitations
+
+System performance depends on the underlying language models and prompt configurations. While the architecture improves reasoning structure, outputs may vary across models and settings. The current version focuses on reasoning and safety support rather than quantitative prediction.
 
 **Authors**
 
 ![](./figures/authors.jpeg)
 
-- Yeonghun Kang
-- Anastasia Arkhipenkova
-- Bogeun Park
-- SeungPyo Kang
+- Yeonghun Kang (Team leader, Development architecture of Agentic AI framework)
+- Anastasia Arkhipenkova (Development of subagents and tools, Run example 1)
+- Bogeun Park (Development of subagents and tools, Run example 2)
+- SeungPyo Kang (Development of subagents and tools, Run example 3)
