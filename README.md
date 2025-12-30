@@ -8,27 +8,17 @@ ChemDX Agentic AI is developed for KRICT ChemDX Hackathon 2025.
 
 ## Overview
 
-ChemDX Agentic AI is a modular, agent-based artificial intelligence framework developed for the KRICT ChemDX Hackathon 2025, designed to support data-driven materials research. The project demonstrates how multiple specialized agents, each connected to verious ChemDX databases (MatDX EF, LitDX_TE, and Phosphor DB) and tools, can be orchestrated to answer complex materials science questions that span materials discovery, structure generation, electronic structure preparation, trend analysis, and visualization.
-
-Rather than relying on a single monolithic model, ChemDX Agentic AI decomposes materials-related queries into structured subtasks handled by dedicated agents. This agentic design enables seamless integration of experimental databases, computational materials data, visualization tools, and first-principles inputs, allowing the system to flexibly address heterogeneous materials science problems within a unified workflow.
+ChemDX Agentic AI is a modular, agent-based artificial intelligence framework developed for the KRICT ChemDX Hackathon 2025 to support data-driven materials research. The project demonstrates how diverse materials science problems can be addressed within a unified workflow by orchestrating multiple specialized agents connected to domain-specific databases and analytical tools. Rather than relying on a single monolithic model, the system decomposes complex queries into structured subtasks, enabling flexible integration of materials databases, trend analysis, visualization, and first-principles simulation preparation.
 
 
 
 ## Key Methods and Approaches
-ChemDX Agentic AI is built on prompt engineering to control agent behavior without modifying model weights. Each Sub-Agent is initialized with a structured system prompt that defines its role and context, while the user prompt specifies the overall goal and task. A shared working memory is used to accumulate intermediate results, allowing subsequent agents to reuse prior information and perform tasks more efficiently.
-
-The framework adopts a multi-agent architecture in which a Main Agent decomposes the task and assigns subtasks to ChemDX-specific Sub-Agents and tools, including database retrieval, structure generation, trend analysis, visualization, and DFT input generation. Sub-Agent outputs are integrated by the Main Agent to produce the final response, enabling flexible and coherent problem solving across diverse materials science workflows.
+The framework is built on prompt engineering and a multi-agent architecture with shared working memory. Each Sub-Agent is initialized with a structured system prompt that defines its role and context, while a Main Agent coordinates task decomposition and execution. Intermediate outputs are stored in working memory and reused across agents, improving efficiency and coherence in multi-step reasoning. ChemDX Agentic AI incorporates a range of materials-specific Sub-Agents and tools, including database retrieval, structure generation, trend analysis, data visualization, and DFT input generation, allowing the system to adapt dynamically to different problem settings.
 
 
 
 ## Key Results and Contributions
-
-During the Hackathon, ChemDX Agentic AI demonstrated its effectiveness by successfully addressing three conceptually distinct materials science problems using a unified agentic workflow. Despite differences in data type, target properties, and analytical depth, all problems were solved by dynamically orchestrating multiple specialized agents and external tools within a single framework, highlighting the flexibility and generality of the proposed approach.
-
-Across these tasks, the system combined database-driven materials retrieval, quantitative comparison, trend analysis, visualization, and structure generation without manual intervention. Sub-agents were selectively activated depending on the problem context, allowing the framework to adaptively integrate phosphor databases, thermoelectric literature data, plotting tools, and DFT input generation pipelines. This demonstrated that heterogeneous materials research questions can be handled coherently through agent-level task decomposition rather than task-specific pipelines.
-
-Overall, the results illustrate that ChemDX Agentic AI provides a practical and extensible solution for solving diverse materials science problems through coordinated sub-agent collaboration. The project highlights how agent-based AI systems can unify materials databases, analytical tools, and computational workflows, offering a scalable foundation for AI-assisted materials discovery and evaluation.
-
+During the Hackathon, ChemDX Agentic AI successfully solved three conceptually distinct materials science problems using the same agentic workflow. Despite differences in target properties and data sources, all tasks were addressed through coordinated sub-agent collaboration and tool invocation. This work highlights the effectiveness of agent-based task decomposition for materials research and provides an extensible blueprint for integrating materials databases, analytical reasoning, and computational workflows within a single AI-driven framework.
 
 
 
@@ -51,9 +41,19 @@ Overall, the results illustrate that ChemDX Agentic AI provides a practical and 
 <div style="text-align : center;"><img src="figures/structure.png" alt="Test" width="88%"></div>
 
 
+## SubAgents of ChemDX Agentic AI
+The system is built on an agentic architecture in which each agent performs a clearly defined function within the materials research pipeline. The agents used in this project include:
 
+-	Phosphor Data Agent, including phosphor lookup, color trend analysis, and candidate recommendation
+-	LitDX_TE Database Agent for thermoelectric materials data retrieval
+-	MatDX EF DB Agent for electronic and functional materials database lookup
+-	MatDX Structure Generation Agent for generating candidate crystal structures
+-	Data Visualization Agent for generating plots and comparative figures
+-	Materials Project Database Agent for accessing computed materials properties
+-	DFT POSCAR Agent for generating VASP-ready POSCAR files
+-	Trend Agent for analyzing correlations and trends within materials databases
 
-
+These agents are orchestrated to collaboratively solve multi-step materials science questions, combining database querying, quantitative comparison, trend analysis, visualization, and structure preparation in a single automated workflow.
 
 
 ## How does ChemDX Agent work?
@@ -77,25 +77,13 @@ Overall, the results illustrate that ChemDX Agentic AI provides a practical and 
 
 
 
-## How to install
+## Result of ChemDX agent
+### Summary of Result
+During the Hackathon, ChemDX Agentic AI demonstrated its effectiveness by successfully addressing three conceptually distinct materials science problems using a unified agentic workflow. Despite differences in data type, target properties, and analytical depth, all problems were solved by dynamically orchestrating multiple specialized agents and external tools within a single framework, highlighting the flexibility and generality of the proposed approach.
 
-```bash
-$ git clone https://github.com/Yeonghun1675/ChemDX_agentic_AI.git
-$ cd ChemDX_agentic_AI
-$ pip install -e .
-```
+Across these tasks, the system combined database-driven materials retrieval, quantitative comparison, trend analysis, visualization, and structure generation without manual intervention. Sub-agents were selectively activated depending on the problem context, allowing the framework to adaptively integrate phosphor databases, thermoelectric literature data, plotting tools, and DFT input generation pipelines. This demonstrated that heterogeneous materials research questions can be handled coherently through agent-level task decomposition rather than task-specific pipelines.
 
-
-
-## How to use it
-
-```bash
-$ streamlit run app.py
-```
-
-
-
-## Example of ChemDX agent
+Overall, the results illustrate that ChemDX Agentic AI provides a practical and extensible solution for solving diverse materials science problems through coordinated sub-agent collaboration. The project highlights how agent-based AI systems can unify materials databases, analytical tools, and computational workflows, offering a scalable foundation for AI-assisted materials discovery and evaluation.
 
 ### Example 1
 
@@ -185,10 +173,29 @@ Procedure
 ![](./figures/test_sp.gif)
 
 
-
 ## Reproducibility and Limitations
 
 System performance depends on the underlying language models and prompt configurations. While the architecture improves reasoning structure, outputs may vary across models and settings. The current version focuses on reasoning and safety support rather than quantitative prediction.
+
+
+
+
+## How to install
+
+```bash
+$ git clone https://github.com/Yeonghun1675/ChemDX_agentic_AI.git
+$ cd ChemDX_agentic_AI
+$ pip install -e .
+```
+
+
+
+## How to use it
+
+```bash
+$ streamlit run app.py
+```
+
 
 **Authors**
 
